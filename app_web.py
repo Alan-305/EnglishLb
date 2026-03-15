@@ -3,7 +3,7 @@ from google import genai
 from google.genai import types
 import pandas as pd
 
-# 1. ページ設定（水色の背景を確保）
+# 1. ページ設定
 st.set_page_config(page_title="基礎S_英語表現T_重要文例Lab", layout="centered")
 
 st.markdown("""
@@ -12,21 +12,28 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Geminiの接続準備（正式窓口 v1 を使用）
+# 2. Geminiの準備と「使えるモデル」の自動検索
 if 'client' not in st.session_state:
     try:
-        st.session_state.client = genai.Client(
-            api_key=st.secrets["GEMINI_API_KEY"],
-            http_options={'api_version': 'v1'}
-        )
+        # 窓口をデフォルトに戻して接続
+        client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+        st.session_state.client = client
+        
+        # --- ここが重要：今使えるモデルをGoogleに聞いて、一番いいものを選ぶ ---
+        available_models = [m.name for m in client.models.list() if 'flash' in m.name.lower()]
+        if available_models:
+            # 例: 'models/gemini-2.0-flash' などが見つかる
+            st.session_state.target_model = available_models[0]
+        else:
+            st.session_state.target_model = 'gemini-2.0-flash' # 保険
+            
     except Exception as e:
-        st.error(f"接続の準備に失敗しました: {e}")
+        st.error(f"接続の準備でエラーが発生しました: {e}")
 
 # 3. データの読み込み
 if 'quiz_list' not in st.session_state:
     try:
         df = pd.read_csv('questions.csv')
-        # CSVの見出しを小文字にして空白を除く
         df.columns = df.columns.str.strip().str.lower()
         st.session_state.quiz_list = df.to_dict('records')
         st.session_state.current_idx = 0
@@ -38,6 +45,10 @@ if 'quiz_list' not in st.session_state:
 # --- メイン画面 ---
 st.title("基礎S_英語表現T_重要文例Lab")
 
+# 自動で見つかったモデル名をこっそり表示（デバッグ用）
+if 'target_model' in st.session_state:
+    st.caption(f"使用中のAIエンジン: {st.session_state.target_model}")
+
 q = st.session_state.quiz_list[st.session_state.current_idx]
 st.subheader(f"Problem {st.session_state.current_idx + 1}: {q['japanese']}")
 
@@ -47,14 +58,10 @@ col1, col2 = st.columns(2)
 
 with col1:
     if st.button("採点"):
-        # 2026年現在、正式版窓口で最も安定しているモデル名
-        target_model = 'gemini-1.5-flash'
-        
         sys_inst = f"あなたは英語教師です。解答を採点し、正解例 {q['english']} と比較して解説してください。"
-        
         try:
             res = st.session_state.client.models.generate_content(
-                model=target_model,
+                model=st.session_state.target_model, # 自動検知したモデルを使用
                 contents=f"生徒回答：{user_ans}"
             )
             st.session_state.feedback_text = res.text
