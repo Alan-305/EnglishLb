@@ -18,15 +18,27 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. 初期設定（ライブラリの新しい書き方に対応）
+# 2. 初期設定（2026年最新の認証方式）
 if 'client' not in st.session_state:
     try:
-        st.session_state.client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-        # 最新の書き方でモデルリストを取得
-        available_models = [m.name for m in st.session_state.client.list_models() if 'flash' in m.name.lower()]
-        st.session_state.target_model = available_models[0] if available_models else 'gemini-1.5-flash'
+        # api_keyキーワードを使わず、configオブジェクトで渡すか、
+        # もしくはライブラリが推奨する最新のコンストラクタ形式にします
+        st.session_state.client = genai.Client(
+            api_key=st.secrets["GEMINI_API_KEY"]
+        )
+        # モデルリストの取得（ここも最新のメソッド名に修正）
+        models = st.session_state.client.models.list()
+        available_models = [m.name for m in models if 'flash' in m.name.lower()]
+        st.session_state.target_model = available_models[0] if available_models else 'gemini-2.0-flash'
     except Exception as e:
-        st.error(f"接続の準備に失敗しました: {e}")
+        # もし上記でもダメな場合、古い形式を試すバックアップ処理
+        try:
+            import google.generativeai as old_genai
+            old_genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+            st.session_state.old_style = True
+            st.session_state.target_model = 'gemini-1.5-flash'
+        except:
+            st.error(f"接続の準備に失敗しました: {e}")
 
 # 3. データの読み込み
 if 'all_questions' not in st.session_state:
@@ -77,12 +89,16 @@ with col1:
     if st.button("採点"):
         sys_inst = f"あなたは親切な日本人の英語教師です。解答を採点し、必ず【日本語のみ】で正解例 {q['english']} と比較して解説してください。見出しを使わず、標準的な文字サイズで回答してください。"
         try:
-            # 最新の生成メソッドを使用
-            res = st.session_state.client.generate_content(
-                model=st.session_state.target_model,
-                contents=f"生徒回答：{user_ans}",
-                config=types.GenerateContentConfig(system_instruction=sys_inst)
-            )
+            if hasattr(st.session_state, 'old_style'):
+                import google.generativeai as old_genai
+                model = old_genai.GenerativeModel(st.session_state.target_model)
+                res = model.generate_content(f"{sys_inst}\n\n生徒回答：{user_ans}")
+            else:
+                res = st.session_state.client.models.generate_content(
+                    model=st.session_state.target_model,
+                    contents=f"生徒回答：{user_ans}",
+                    config=types.GenerateContentConfig(system_instruction=sys_inst)
+                )
             st.session_state.feedback_text = res.text
             st.session_state.show_feedback = True
             
