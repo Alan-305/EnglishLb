@@ -22,7 +22,8 @@ st.markdown("""
 
 # --- 初期化 ---
 if 'client' not in st.session_state:
-   st.session_state.client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])if 'questions' not in st.session_state:
+   st.session_state.client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+   if 'questions' not in st.session_state:
     # 同階層のCSVを読み込み
     try:
         df = pd.read_csv('questions.csv')
