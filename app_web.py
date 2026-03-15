@@ -59,9 +59,12 @@ with col1:
             st.session_state.show_feedback = True
             
             # --- 正解ならバルーンを飛ばす！ ---
-            if user_ans.strip().lower() == q['english'].strip().lower():
-                st.balloons()
-                
+            # 記号や空白を取り除いて「文字だけ」で比較する
+            user_clean = "".join(e for e in user_ans if e.isalnum()).lower()
+            correct_clean = "".join(e for e in q['english'] if e.isalnum()).lower()
+            
+            if user_clean == correct_clean:
+                st.balloons()                
         except Exception as e:
             st.error(f"採点エラー: {e}")
 
