@@ -6,8 +6,8 @@ from gtts import gTTS
 import io
 from PIL import Image
 
-# 1. ページ設定とデザイン（オレンジ・グラデーション・カスタム）
-st.set_page_config(page_title="基礎S_英語表現T_重要文例Lab", layout="centered")
+# 1. ページ設定とデザイン（正式タイトル & オレンジグラデーション）
+st.set_page_config(page_title="基礎シリーズ 英語②T（表現）", layout="centered")
 
 st.markdown("""
 <style>
@@ -24,6 +24,7 @@ st.markdown("""
         padding-bottom: 10px; 
         border-bottom: 3px solid #ffcc80;
         font-family: 'serif';
+        margin-bottom: 30px;
     }
     
     /* カード部分：白背景に暖色系の縁取り */
@@ -107,7 +108,7 @@ if st.sidebar.button("学習を開始する"):
 
 # --- メイン画面 ---
 if st.session_state.current_list is None:
-    st.markdown("<h1 class='main-title'>基礎S_英語表現T_重要文例Lab</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-title'>基礎シリーズ 英語②T（表現）</h1>", unsafe_allow_html=True)
     st.info("サイドバーから講を選んで開始してください。")
     st.stop()
 
@@ -122,7 +123,7 @@ if st.session_state.finished:
         st.rerun()
     st.stop()
 
-st.markdown("<h1 class='main-title'>基礎S_英語表現T_重要文例Lab</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>基礎シリーズ 英語②T（表現）</h1>", unsafe_allow_html=True)
 progress = (st.session_state.current_idx) / len(st.session_state.current_list)
 st.progress(progress)
 st.sidebar.metric("現在のスコア", f"{st.session_state.score} 点")
