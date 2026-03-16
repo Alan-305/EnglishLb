@@ -9,49 +9,33 @@ from streamlit_cropper import st_cropper
 import datetime
 import requests
 
-# 1. ページ設定とスマホ向け高度デザイン
+# 1. ページ設定とスマホ向けデザイン
 st.set_page_config(page_title="基礎シリーズ 英語②T", layout="centered")
 
 st.markdown("""
 <style>
-    /* スマホの背景とフォント */
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff3e0 100%); }
-    
-    /* タイトルをスマホでも見やすく */
     .main-title { 
         color: #e67e22; text-align: center; font-weight: 700; 
         font-size: 1.5em; padding: 10px 0; border-bottom: 3px solid #ffcc80; 
         font-family: 'serif'; margin-bottom: 15px;
     }
-
-    /* ボタンを「親指サイズ」に巨大化 */
     div.stButton > button { 
         background-color: #f39c12 !important; color: white !important; 
         border-radius: 15px !important; height: 4em !important; 
         font-size: 1.1em !important; font-weight: bold !important; 
         border: none !important; width: 100%; margin-bottom: 10px;
     }
-
-    /* タブの文字を中央に */
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
-    .stTabs [data-baseweb="tab"] { 
-        font-size: 1.1em; font-weight: bold; 
-        padding: 10px 15px; border-radius: 10px 10px 0 0;
-    }
-
-    /* カード部分の余白をスマホ用にスリム化 */
     div[data-testid="stVerticalBlock"] > div:has(div.stTabs) { 
         background-color: white !important; padding: 15px !important; 
         border-radius: 15px !important; border: 1px solid #ffe0b2 !important; 
     }
-
-    /* 解説ボックスを読みやすく */
     .feedback-container { 
         background-color: #fff9f0; padding: 15px; border-radius: 10px; 
         border-left: 6px solid #f39c12; font-size: 1.05em; color: #5d4037; 
     }
-    .feedback-container b { font-family: 'serif'; font-size: 1.2em; color: #784212; }
-    .model-answer-text { font-family: 'serif'; font-size: 1.3em; font-weight: bold; margin-top: 15px; color: #784212; }
+    .feedback-container b { font-family: 'serif'; font-size: 1.3em; color: #784212; background-color: #fff3e0; padding: 0 4px; }
+    .model-answer-text { font-family: 'serif'; font-size: 1.35em; font-weight: bold; margin-top: 15px; color: #784212; border-top: 1px dashed #ffcc80; padding-top: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -89,13 +73,11 @@ if st.sidebar.button("学習スタート"):
     selected_data = [q for q in st.session_state.all_questions if q['kou'] in selected_kous]
     if selected_data:
         st.session_state.current_list = selected_data
-        st.session_state.current_idx = 0
-        st.session_state.score = 0
-        st.session_state.finished = False
-        st.session_state.show_feedback = False
+        st.session_state.current_idx, st.session_state.score = 0, 0
+        st.session_state.finished, st.session_state.show_feedback = False, False
         st.rerun()
 
-# --- メイン画面 ---
+# --- メイン ---
 if st.session_state.current_list is None:
     st.markdown("<h1 class='main-title'>基礎シリーズ 英語②T（表現）</h1>", unsafe_allow_html=True)
     st.info("サイドバーから「講」を選んでください。")
@@ -105,7 +87,7 @@ if st.session_state.finished:
     st.markdown("<h1 class='main-title'>Result 🎉</h1>", unsafe_allow_html=True)
     st.markdown(f"<div style='text-align:center;'><h2>スコア</h2><p style='font-size:3em;color:#e67e22;font-weight:bold;'>{st.session_state.score} / {len(st.session_state.current_list)}</p></div>", unsafe_allow_html=True)
     if st.button("もう一度挑戦"):
-        st.session_state.finished = False
+        st.session_state.finished, st.session_state.current_idx = False, 0
         st.rerun()
     st.stop()
 
@@ -113,46 +95,58 @@ st.markdown("<h1 class='main-title'>基礎シリーズ 英語②T（表現）</h
 q = st.session_state.current_list[st.session_state.current_idx]
 st.markdown(f"<p style='color:#784212; margin-bottom:5px;'>第{q['no']}問 ({st.session_state.current_idx + 1}/{len(st.session_state.current_list)})</p><h3 style='color:#784212; margin-top:0;'>{q['japanese']}</h3>", unsafe_allow_html=True)
 
-# --- 入力タブ（名称を短縮） ---
-tab1, tab2, tab3, tab4 = st.tabs(["📷 カメラ", "⌨️ キーボード", "🎤 マイク", "💬 Suppot"])
+# --- タブ（名称を丁寧に修正） ---
+tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
 
+cropped_image = None
 with tab1:
-    img_file = st.file_uploader("写真", type=['png', 'jpg', 'jpeg'], key=f"u_{st.session_state.current_idx}")
-    cam_file = st.camera_input("撮影", key=f"c_{st.session_state.current_idx}")
+    img_file = st.file_uploader("写真を選択", type=['png', 'jpg', 'jpeg'], key=f"u_{st.session_state.current_idx}")
+    cam_file = st.camera_input("カメラで撮影", key=f"c_{st.session_state.current_idx}")
     raw = cam_file if cam_file else img_file
-    cropped_image = st_cropper(Image.open(raw), box_color='#f39c12', aspect_ratio=None) if raw else None
+    if raw:
+        img_obj = Image.open(raw)
+        cropped_image = st_cropper(img_obj, realtime_update=True, box_color='#f39c12', aspect_ratio=None)
 
-with tab2: user_text = st.text_input("回答を入力", key=f"t_{st.session_state.current_idx}")
+with tab2: user_text = st.text_input("回答をタイピング", key=f"t_{st.session_state.current_idx}")
 with tab3: audio_file = st.audio_input("録音して提出", key=f"a_{st.session_state.current_idx}")
 
 with tab4:
-    st.subheader("開発者(松尾先生)へ")
-    WEB_APP_URL = "https://script.google.com/macros/s/AKfycbycMBPTDIHDXzExHx5IJOPGssrYshSiWXObhYrtbhLWKkWfjWgmLemgY5lVdCHRtA29pQ/exec" 
+    st.subheader("Alan先生への報告・メッセージ")
+    # ★ここに Alan さんの GAS URL を貼り付けてください
+    WEB_APP_URL = "https://script.google.com/macros/s/XXXXX/exec" 
     with st.form(key="support_form", clear_on_submit=True):
-        sender = st.text_input("名前")
-        msg = st.text_area("内容")
-        if st.form_submit_button("送信"):
-            if WEB_APP_URL != "ここに...":
+        sender = st.text_input("お名前")
+        msg = st.text_area("メッセージ内容（質問や感想など）")
+        if st.form_submit_button("先生に送信する"):
+            if WEB_APP_URL.startswith("http"):
                 requests.post(WEB_APP_URL, json={"name": sender, "message": msg})
-                st.success("送信しました！")
+                st.success("送信が完了しました！")
 
-# --- アクションボタン（スマホで横並び、または大きく表示） ---
+# --- アクション ---
 if st.button("🚀 採点する"):
-    with st.spinner("AI採点中..."):
-        try:
-            model = genai.GenerativeModel(st.session_state.target_model)
-            inst = f"正解例『{q['english']}』と比較。1行目に文字起こし、次に日本語で添削。英文は太字。正解なら『正解です』と含める。正解例の解説は不要。"
-            if audio_file: res = model.generate_content([inst, {"mime_type": "audio/wav", "data": audio_file.read()}])
-            elif cropped_image: res = model.generate_content([inst, cropped_image])
-            else: res = model.generate_content(f"{inst}\n生徒：{user_text}")
-            st.session_state.feedback_text, st.session_state.show_feedback = res.text, True
-            if "正解" in res.text: st.session_state.score += 1; st.balloons()
-        except Exception as e: st.error(f"Error: {e}")
+    if not (cropped_image or user_text or audio_file):
+        st.warning("いずれかの方法で解答を提出してください。")
+    else:
+        with st.spinner("AI採点中..."):
+            try:
+                model = genai.GenerativeModel(st.session_state.target_model)
+                inst = f"正解例『{q['english']}』と比較。1行目に文字起こし、次に日本語で添削。英文は太字。正解なら『正解です』と含める。正解例の解説は不要。"
+                if audio_file: res = model.generate_content([inst, {"mime_type": "audio/wav", "data": audio_file.read()}])
+                elif cropped_image: res = model.generate_content([inst, cropped_image])
+                else: res = model.generate_content(f"{inst}\n生徒：{user_text}")
+                st.session_state.feedback_text, st.session_state.show_feedback = res.text, True
+                if "正解" in res.text: st.session_state.score += 1; st.balloons()
+            except Exception as e: st.error(f"Error: {e}")
 
 if st.session_state.show_feedback:
     st.markdown("---")
     st.markdown(f"<div class='feedback-container'><div>{st.session_state.feedback_text}</div><div class='model-answer-text'>模範解答：{q['english']}</div></div>", unsafe_allow_html=True)
-    st.audio(io.BytesIO(gTTS(q['english'], lang='en')._write_to_fp(io.BytesIO()).getvalue()))
+    
+    tts = gTTS(q['english'], lang='en')
+    audio_fp = io.BytesIO()
+    tts.write_to_fp(audio_fp)
+    st.audio(audio_fp)
+
     if st.button("次へ進む ➔"):
         if st.session_state.current_idx < len(st.session_state.current_list) - 1:
             st.session_state.current_idx += 1
