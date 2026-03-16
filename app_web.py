@@ -7,6 +7,7 @@ import io
 from PIL import Image
 from streamlit_cropper import st_cropper
 import datetime
+import requests # メッセージ送信に必要です
 
 # 1. ページ設定とデザイン
 st.set_page_config(page_title="基礎シリーズ 英語②T（表現）", layout="centered")
@@ -22,7 +23,6 @@ st.markdown("""
     .feedback-container b, .feedback-container strong { font-family: 'serif'; font-size: 1.25em; color: #784212; background-color: #fff3e0; padding: 0 4px; border-radius: 4px; }
     .model-answer-text { font-family: 'serif'; font-size: 1.4em; color: #784212; font-weight: bold; margin-top: 20px; padding-top: 15px; border-top: 1px dashed #ffcc80; }
     .inner-label { font-weight: bold; color: #a04000; }
-    .japanese-text { font-size: 1.1em; color: #5d4037; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -53,11 +53,10 @@ if 'all_questions' not in st.session_state:
 
 # --- サイドバー ---
 st.sidebar.title("📚 Study Lab Menu")
-if st.sidebar.button("システムをリセット"):
+if st.sidebar.button("リセット"):
     st.session_state.clear()
     st.rerun()
 
-st.sidebar.markdown("---")
 kous = sorted(list(set([q['kou'] for q in st.session_state.all_questions])))
 selected_kous = st.sidebar.multiselect("講を選択", kous, default=[kous[0]] if kous else [])
 order_type = st.sidebar.radio("出題順", ["順番通り", "ランダム"])
@@ -81,13 +80,7 @@ if st.session_state.current_list is None:
 
 if st.session_state.finished:
     st.markdown("<h1 class='main-title'>Result 🎉</h1>", unsafe_allow_html=True)
-    total = len(st.session_state.current_list)
-    score = st.session_state.score
     st.balloons()
-    st.markdown(f"<div style='background:white;padding:30px;border:2px solid #ffcc80;border-radius:15px;text-align:center;'><h2>最終成績</h2><p style='font-size:3.5em;color:#e67e22;font-weight:bold;'>{score} / {total}</p></div>", unsafe_allow_html=True)
-    if st.button("もう一度挑戦"):
-        st.session_state.finished = False
-        st.rerun()
     st.stop()
 
 st.markdown("<h1 class='main-title'>基礎シリーズ 英語②T（表現）</h1>", unsafe_allow_html=True)
@@ -95,98 +88,48 @@ progress = (st.session_state.current_idx) / len(st.session_state.current_list)
 st.progress(progress)
 
 q = st.session_state.current_list[st.session_state.current_idx]
-st.markdown(f"<p class='japanese-text'>第{q['no']}問（{q['kou']}）</p>", unsafe_allow_html=True)
-st.markdown(f"<h2 style='color:#784212;'>{q['japanese']}</h2>", unsafe_allow_html=True)
+st.markdown(f"<p style='color:#784212;'>第{q['no']}問（{q['kou']}）</p><h2 style='color:#784212;'>{q['japanese']}</h2>", unsafe_allow_html=True)
 
-# --- 入力タブ（Supportを追加） ---
+# --- タブエリア ---
 tab1, tab2, tab3, tab4 = st.tabs(["📷 Photo", "⌨️ Type", "🎤 Voice", "💬 Support"])
 
-cropped_image = None
 with tab1:
     img_file = st.file_uploader("写真をアップ", type=['png', 'jpg', 'jpeg'], key=f"up_{st.session_state.current_idx}")
     cam_file = st.camera_input("撮影", key=f"cam_{st.session_state.current_idx}")
     raw_image = cam_file if cam_file else img_file
-    if raw_image:
-        st.write("📖 **解答部分を枠で囲んでください**")
-        img_obj = Image.open(raw_image)
-        cropped_image = st_cropper(img_obj, realtime_update=True, box_color='#f39c12', aspect_ratio=None)
+    cropped_image = st_cropper(Image.open(raw_image), realtime_update=True, box_color='#f39c12', aspect_ratio=None) if raw_image else None
 
-with tab2:
-    user_text = st.text_input("回答入力", key=f"text_{st.session_state.current_idx}")
+with tab2: user_text = st.text_input("回答入力", key=f"text_{st.session_state.current_idx}")
+with tab3: audio_file = st.audio_input("話して提出", key=f"audio_{st.session_state.current_idx}")
 
-with tab3:
-    audio_file = st.audio_input("話して提出", key=f"audio_{st.session_state.current_idx}")
-
-# --- 開発者へのメッセージ機能 ---
 with tab4:
-    st.subheader("👨‍🏫 開発者（Alan先生）へメッセージ")
-    st.write("質問や感想、バグ報告などがあればこちらからどうぞ！")
+    st.subheader("👨‍🏫 開発者へメッセージ")
+    # ★★★ ここにGASのURLを貼り付けてください ★★★
+    WEB_APP_URL = "https://script.google.com/macros/s/AKfycbycMBPTDIHDXzExHx5IJOPGssrYshSiWXObhYrtbhLWKkWfjWgmLemgY5lVdCHRtA29pQ/exec" 
+    
     with st.form(key="support_form", clear_on_submit=True):
-        sender_name = st.text_input("お名前（ニックネーム可）")
-        msg_body = st.text_area("メッセージ内容")
-        submit_msg = st.form_submit_button("メッセージを送信する")
-        
-        if submit_msg:
-            if not msg_body:
-                st.warning("メッセージを入力してください。")
-            else:
-                # メッセージを一時的に表示（本来はここでDBやメールに飛ばす）
-                # 今回はAlanさんが確認しやすいよう、成功メッセージを表示
-                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                st.success(f"ありがとうございます、{sender_name}さん！メッセージを受け付けました。（{timestamp}）")
-                # ヒント：ここにGoogleフォームへの自動連携などを後で組み込めます
+        sender_name = st.text_input("お名前")
+        msg_body = st.text_area("メッセージ")
+        if st.form_submit_button("送信"):
+            if WEB_APP_URL == "ここにコピーしたURLを貼り付けてください":
+                st.error("URLが設定されていません。")
+            elif msg_body:
+                res = requests.post(WEB_APP_URL, json={"name": sender_name, "message": msg_body})
+                st.success("先生に届けました！") if res.status_code == 200 else st.error("送信失敗")
 
-# --- 採点アクション ---
-col1, col2, col3 = st.columns(3)
-with col1:
-    if st.button("採点する"):
-        if not (cropped_image or user_text or audio_file):
-            st.warning("解答を提出してください。")
-        else:
-            with st.spinner("添削中..."):
-                try:
-                    model = genai.GenerativeModel(st.session_state.target_model)
-                    inst = f"""
-                    生徒の回答を正解例『{q['english']}』と比較して添削してください。
-                    【出力の指示】
-                    1. 1行目に「あなたの解答：[ここに文字起こしした英文]」
-                    2. 次にアドバイスを日本語で。
-                    3. 正解例そのものの解説は不要。ミスの指摘や良い点の評価に集中。
-                    4. 正解の場合は、必ず文中に『正解です』と含める。
-                    5. 解説の中の英文は **(太字)** で囲む。
-                    """
-                    if audio_file: res = model.generate_content([inst, {"mime_type": "audio/wav", "data": audio_file.read()}])
-                    elif cropped_image: res = model.generate_content([inst, cropped_image])
-                    else: res = model.generate_content(f"{inst}\n生徒の回答：{user_text}")
-                    st.session_state.feedback_text = res.text
-                    st.session_state.show_feedback = True
-                    if "正解" in res.text:
-                        st.session_state.score += 1
-                        st.balloons()
-                except Exception as e: st.error(f"Error: {e}")
+# --- 採点ボタン ---
+if st.button("採点する"):
+    with st.spinner("添削中..."):
+        try:
+            model = genai.GenerativeModel(st.session_state.target_model)
+            inst = f"生徒の回答を正解例『{q['english']}』と比較。1行目に文字起こし、次に日本語で添削。英文は太字。正解なら『正解です』と含める。"
+            if audio_file: res = model.generate_content([inst, {"mime_type": "audio/wav", "data": audio_file.read()}])
+            elif cropped_image: res = model.generate_content([inst, cropped_image])
+            else: res = model.generate_content(f"{inst}\n生徒：{user_text}")
+            st.session_state.feedback_text, st.session_state.show_feedback = res.text, True
+            if "正解" in res.text: st.session_state.score += 1; st.balloons()
+        except Exception as e: st.error(f"Error: {e}")
 
-with col2:
-    if st.button("答えを見る"):
-        st.session_state.show_feedback = True
-        st.session_state.feedback_text = "模範解答を確認して練習しましょう。"
-
-with col3:
-    label = "Next ➔" if st.session_state.current_idx < len(st.session_state.current_list) - 1 else "Finish"
-    if st.button(label):
-        if st.session_state.current_idx < len(st.session_state.current_list) - 1:
-            st.session_state.current_idx += 1
-            st.session_state.show_feedback = False
-            st.rerun()
-        else:
-            st.session_state.finished = True
-            st.rerun()
-
-# --- フィードバックエリア ---
 if st.session_state.show_feedback:
-    st.markdown("---")
-    st.markdown("<p class='explanation-label'>解説</p>", unsafe_allow_html=True)
     st.markdown(f"<div class='feedback-container'><div>{st.session_state.feedback_text}</div><div class='model-answer-text'><span class='inner-label'>模範解答：</span>{q['english']}</div></div>", unsafe_allow_html=True)
-    tts = gTTS(q['english'], lang='en')
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    st.audio(fp)
+    st.audio(io.BytesIO(gTTS(q['english'], lang='en')._write_to_fp(io.BytesIO()).getvalue())) if st.button("次の問題へ") else st.empty()
