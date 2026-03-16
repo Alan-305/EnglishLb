@@ -1,5 +1,5 @@
-import os
-os.system("pip install google-generativeai gTTS Pillow")
+import streamlit as st
+import google.generativeai as genai
 import pandas as pd
 import random
 from gtts import gTTS
@@ -18,15 +18,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. AIの初期設定（最も安定した認証方式に変更）
+# 2. AIの初期設定（安定版）
 if 'ai_configured' not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         st.session_state.ai_configured = True
-        # 安定版のモデル名を指定
         st.session_state.target_model = 'gemini-1.5-flash'
     except Exception as e:
-        st.error(f"AIの準備に失敗しました。Secretsの設定を確認してください: {e}")
+        st.error(f"AIの準備に失敗しました: {e}")
 
 # 3. データの読み込み
 if 'all_questions' not in st.session_state:
@@ -40,8 +39,9 @@ if 'all_questions' not in st.session_state:
 
 # --- サイドバー設定 ---
 st.sidebar.title("🛠️ 学習設定")
-kou_list = sorted(list(set([q['kou'] for q in st.session_state.all_questions])), key=lambda x: str(x))
-selected_kous = st.sidebar.multiselect("学習する講を選択", kou_list, default=[kou_list[0]] if kou_list else [])
+# CSVの'kou'列を使って分類
+kous = sorted(list(set([q['kou'] for q in st.session_state.all_questions])))
+selected_kous = st.sidebar.multiselect("学習する講を選択", kous, default=[kous[0]] if kous else [])
 order_type = st.sidebar.radio("出題順", ["順番通り", "ランダム"])
 
 if st.sidebar.button("この設定で開始/リセット"):
@@ -68,21 +68,21 @@ st.caption(f"（{q['kou']} - {st.session_state.current_idx + 1} / {len(st.sessio
 
 # --- カメラ/写真による文字起こし ---
 with st.expander("📷 写真から解答を入力（OCR機能）"):
-    input_image = st.file_uploader("ノートや手書きの答えをアップロード", type=['png', 'jpg', 'jpeg'], key="uploader")
+    target_img = st.file_uploader("写真をアップロード", type=['png', 'jpg', 'jpeg'])
     camera_file = st.camera_input("カメラで撮影")
     
-    target_img = camera_file if camera_file else input_image
+    final_img = camera_file if camera_file else target_img
     
-    if target_img and st.button("AIで文字起こしを実行"):
-        with st.spinner("AIが英文を読み取っています..."):
+    if final_img and st.button("AIで文字起こしを実行"):
+        with st.spinner("読み取り中..."):
             try:
-                img = Image.open(target_img)
+                img = Image.open(final_img)
                 model = genai.GenerativeModel(st.session_state.target_model)
-                ocr_res = model.generate_content(["この画像に書かれている英文のみをテキストとして書き出してください。解説は不要です。", img])
+                ocr_res = model.generate_content(["画像内の英文のみをテキスト化してください。解説不要。", img])
                 st.session_state.ocr_text = ocr_res.text.strip()
-                st.success("読み取り完了！下の欄に反映されました。")
+                st.success("反映されました！")
             except Exception as e:
-                st.error(f"文字起こしエラー: {e}")
+                st.error(f"OCRエラー: {e}")
 
 # 解答入力欄
 user_ans = st.text_input("あなたの答え:", value=st.session_state.get('ocr_text', ""), key=f"input_{st.session_state.current_idx}")
@@ -91,20 +91,14 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("採点"):
-        prompt = f"""
-        あなたは親切な日本人の英語教師です。
-        【正解例】: {q['english']}
-        【生徒の回答】: {user_ans}
-        上記を比較し、採点と解説を日本語のみで行ってください。
-        大きな見出しを使わず、標準サイズで読みやすく回答してください。
-        """
+        prompt = f"英語教師として、生徒の回答『{user_ans}』を正解例『{q['english']}』と比較し、日本語で簡潔に解説してください。見出しは使わず標準サイズで回答してください。"
         try:
             model = genai.GenerativeModel(st.session_state.target_model)
             res = model.generate_content(prompt)
             st.session_state.feedback_text = res.text
             st.session_state.show_feedback = True
             
-            # 桜を咲かせる（バルーン）判定
+            # 正解判定（バルーン演出）
             user_clean = "".join(e for e in user_ans if e.isalnum()).lower()
             correct_clean = "".join(e for e in q['english'] if e.isalnum()).lower()
             if user_clean == correct_clean:
@@ -125,13 +119,11 @@ with col3:
             st.session_state.ocr_text = ""
             st.rerun()
         else:
-            st.success("全ての選んだ問題が終わりました！")
+            st.success("全問終了！お疲れ様でした！")
 
-# 結果表示
 if st.session_state.show_feedback:
     st.info(st.session_state.feedback_text)
     st.write(f"**【正解例】** {q['english']}")
-    
     tts = gTTS(q['english'], lang='en')
     fp = io.BytesIO()
     tts.write_to_fp(fp)
