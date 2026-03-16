@@ -18,22 +18,21 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. AIの初期設定（安定モデルを優先的に探す）
+# 2. AIの初期設定（2026年最新モデル gemini-3-flash 対応）
 if 'target_model' not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # 利用可能なモデルを取得
         available_model_names = [m.name for m in genai.list_models()]
         
-        # 安定性が高い順に候補をリストアップ
+        # 2026年現在の安定・最新候補リスト
         candidates = [
-            'models/gemini-2.0-flash', 
-            'models/gemini-1.5-flash', 
-            'models/gemini-pro-vision'
+            'models/gemini-3-flash',      # 現在の標準
+            'models/gemini-3-flash-lite', # 軽量版
+            'models/gemini-2.0-flash'     # 予備（エラーが出る可能性あり）
         ]
         
-        # 候補の中から自分の環境で使えるものを選ぶ
-        st.session_state.target_model = 'models/gemini-1.5-flash' # デフォルト
+        # 使えるモデルを自動選択
+        st.session_state.target_model = 'models/gemini-3-flash' # デフォルト
         for c in candidates:
             if c in available_model_names:
                 st.session_state.target_model = c
@@ -55,7 +54,6 @@ if 'all_questions' not in st.session_state:
 
 # --- サイドバー設定 ---
 st.sidebar.title("🛠️ 学習設定")
-# デバッグ用に現在使用中のモデルを表示
 st.sidebar.caption(f"使用中AI: {st.session_state.get('target_model', '未設定')}")
 
 kous = sorted(list(set([q['kou'] for q in st.session_state.all_questions])))
@@ -91,7 +89,7 @@ with st.expander("📷 写真から解答を入力"):
     target = cam_file if cam_file else img_file
     
     if target and st.button("AIで文字起こしを実行"):
-        with st.spinner("AIが読み取っています..."):
+        with st.spinner("最新AI (Gemini 3) が読み取っています..."):
             try:
                 img = Image.open(target)
                 model = genai.GenerativeModel(st.session_state.target_model)
@@ -110,7 +108,7 @@ with col1:
     if st.button("採点"):
         try:
             model = genai.GenerativeModel(st.session_state.target_model)
-            prompt = f"英語教師として回答『{user_ans}』を正解例『{q['english']}』と比較し、日本語で簡潔に解説してください。"
+            prompt = f"英語教師として回答『{user_ans}』を正解例『{q['english']}』と比較し、日本語で丁寧に解説してください。意味が合っていれば大いに褒めてください。"
             res = model.generate_content(prompt)
             st.session_state.feedback_text = res.text
             st.session_state.show_feedback = True
@@ -136,7 +134,7 @@ with col3:
             st.session_state.ocr_text = ""
             st.rerun()
         else:
-            st.success("終了です！")
+            st.success("全ての選んだ問題が終わりました！お疲れ様でした！")
 
 if st.session_state.show_feedback:
     st.info(st.session_state.feedback_text)
