@@ -1,0 +1,14 @@
+[client]
+# 右上のGitHubボタンやメニューを隠し、スッキリさせます
+toolbarMode = "minimal"
+
+[theme]
+# 生徒のスマホがダークモードでも、常に「白背景（ライトモード）」で表示します
+base = "light"
+
+# アプリのテーマカラー（ボタンの色など）をオレンジに固定します
+primaryColor = "#f39c12"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#fff3e0"
+textColor = "#5d4037"
+font = "serif"
