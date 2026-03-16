@@ -6,7 +6,7 @@ from gtts import gTTS
 import io
 from PIL import Image
 
-# 1. ページ設定とデザイン（オレンジグラデーション & テキスト拡大対応）
+# 1. ページ設定とデザイン
 st.set_page_config(page_title="基礎シリーズ 英語②T（表現）", layout="centered")
 
 st.markdown("""
@@ -46,41 +46,51 @@ st.markdown("""
         border: none !important;
     }
     
-    /* 解説セクションの見出し */
+    /* 「解説」という見出し */
     .explanation-label {
         color: #d35400;
         font-weight: bold;
         font-size: 1.2em;
-        margin-top: 20px;
+        margin-top: 25px;
         margin-bottom: 10px;
     }
 
-    /* 解説文のボックス */
-    .explanation-box {
+    /* 解説表示エリア全体のボックス */
+    .feedback-container {
         background-color: #fff9f0;
-        padding: 20px;
+        padding: 25px;
         border-radius: 10px;
-        border-left: 5px solid #f39c12;
-        line-height: 1.6;
+        border-left: 6px solid #f39c12;
+        line-height: 1.8;
         font-size: 1.1em;
         color: #5d4037;
     }
 
-    /* 解説の中の英文（太字部分）を大きく表示 */
-    .explanation-box b, .explanation-box strong {
+    /* ボックス内の「あなたの解答」や「模範解答」という見出し用 */
+    .inner-label {
+        font-weight: bold;
+        color: #a04000;
+    }
+
+    /* 解説の中の英文（太字部分）を大きく表示（正解例と同じサイズ） */
+    .feedback-container b, .feedback-container strong {
         font-family: 'serif';
-        font-size: 1.3em; /* 正解例と同じサイズに調整 */
+        font-size: 1.25em; /* 正解例の1.4emに近づけつつ読みやすく調整 */
         color: #784212;
-        padding: 0 2px;
+        background-color: #fff3e0;
+        padding: 0 4px;
+        border-radius: 4px;
     }
     
-    /* 正解例のテキスト */
-    .english-text { 
+    /* 最後に表示される模範解答のテキスト */
+    .model-answer-text { 
         font-family: 'serif'; 
         font-size: 1.4em; 
         color: #784212; 
         font-weight: bold; 
-        margin-top: 15px;
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px dashed #ffcc80;
     }
     
     .japanese-text { font-size: 1.1em; color: #5d4037; }
@@ -168,19 +178,20 @@ col1, col2, col3 = st.columns(3)
 with col1:
     if st.button("採点する"):
         if not (active_image or user_text or audio_file):
-            st.warning("解答を入力してください。")
+            st.warning("解答を提出してください。")
         else:
-            with st.spinner("分析中..."):
+            with st.spinner("添削中..."):
                 try:
                     model = genai.GenerativeModel(st.session_state.target_model)
-                    # プロンプトの修正：正解例自体の解説を禁止
                     inst = f"""
-                    生徒の回答を正解例『{q['english']}』と比較し、添削とアドバイスを日本語で作成してください。
-                    【条件】
-                    - **正解例そのものの意味や文法事項の解説は一切含めないでください。** - 生徒の回答のミス、綴りの間違い、あるいは良い点のみを指摘してください。
-                    - 正解の場合は、文中に必ず『正解です』と入れてください。
-                    - 解説の中で英文を書くときは、その部分を必ず ** (太字) で囲んでください。
-                    - 「英語教師としての解説」などの見出しは不要です。内容のみを書いてください。
+                    生徒の回答を正解例『{q['english']}』と比較して添削してください。
+                    
+                    【出力の指示】
+                    1. まず1行目に「あなたの解答：[ここに文字起こしした英文]」と書いてください。
+                    2. 次に改行して、生徒の回答へのアドバイスを日本語で書いてください。
+                    3. 正解例そのものの意味や文法の解説は不要です。生徒のミスの指摘や良い点の評価に集中してください。
+                    4. 正解の場合は、必ず文中に『正解です』という言葉を含めてください。
+                    5. 解説の中で英文を引用するときは、必ず **(太字)** で囲んでください。
                     """
                     if audio_file: res = model.generate_content([inst, {"mime_type": "audio/wav", "data": audio_file.read()}])
                     elif active_image: res = model.generate_content([inst, Image.open(active_image)])
@@ -196,7 +207,8 @@ with col1:
 with col2:
     if st.button("答えを見る"):
         st.session_state.show_feedback = True
-        st.session_state.feedback_text = "正解を確認しましょう。"
+        # 答えを見るボタンの時は、文字起こしがないのでシンプルに表示
+        st.session_state.feedback_text = "模範解答を確認して練習しましょう。"
 
 with col3:
     label = "Next ➔" if st.session_state.current_idx < len(st.session_state.current_list) - 1 else "Finish"
@@ -213,10 +225,17 @@ with col3:
 if st.session_state.show_feedback:
     st.markdown("---")
     st.markdown("<p class='explanation-label'>解説</p>", unsafe_allow_html=True)
-    # 解説ボックスの中にAIの回答を表示（英文は自動的に大きく太字になるようCSSで設定済み）
-    st.markdown(f"<div class='explanation-box'>{st.session_state.feedback_text}</div>", unsafe_allow_html=True)
     
-    st.markdown(f"<p class='english-text'>Answer: {q['english']}</p>", unsafe_allow_html=True)
+    # 1つのボックスの中に「あなたの解答」「解説」「模範解答」をすべてまとめる
+    with st.container():
+        st.markdown(f"""
+        <div class='feedback-container'>
+            <div>{st.session_state.feedback_text}</div>
+            <div class='model-answer-text'><span class='inner-label'>模範解答：</span>{q['english']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # 音声再生
     tts = gTTS(q['english'], lang='en')
     fp = io.BytesIO()
     tts.write_to_fp(fp)
