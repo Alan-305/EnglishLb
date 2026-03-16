@@ -18,15 +18,21 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. AIの初期設定（404エラー対策版）
-if 'ai_configured' not in st.session_state:
+# 2. AIの初期設定（モデル自動検知機能付き）
+if 'target_model' not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        # 利用可能なモデルから最新の'flash'モデルを探す
+        available_models = [m.name for m in genai.list_models() if 'flash' in m.name]
+        if available_models:
+            # 一番新しいモデル（リストの最後の方）を選択
+            st.session_state.target_model = available_models[-1]
+        else:
+            # 万が一見つからない場合の2026年標準モデル
+            st.session_state.target_model = 'models/gemini-2.0-flash'
         st.session_state.ai_configured = True
-        # 404エラーを防ぐため、正式なモデル名を指定
-        st.session_state.target_model = 'models/gemini-1.5-flash'
     except Exception as e:
-        st.error(f"AIの準備に失敗しました: {e}")
+        st.error(f"AI設定エラー: {e}")
 
 # 3. データの読み込み
 if 'all_questions' not in st.session_state:
@@ -35,7 +41,7 @@ if 'all_questions' not in st.session_state:
         df.columns = df.columns.str.strip().str.lower()
         st.session_state.all_questions = df.to_dict('records')
     except Exception as e:
-        st.error(f"CSV読み込みエラー。ファイル名が 'questions.csv' であるか確認してください: {e}")
+        st.error(f"CSVエラー: {e}")
         st.stop()
 
 # --- サイドバー設定 ---
@@ -74,17 +80,15 @@ with st.expander("📷 写真から解答を入力（OCR機能）"):
     final_img = camera_file if camera_file else target_img
     
     if final_img and st.button("AIで文字起こしを実行"):
-        with st.spinner("AIが英文を読み取っています..."):
+        with st.spinner("最新AIが英文を読み取っています..."):
             try:
                 img = Image.open(final_img)
                 model = genai.GenerativeModel(st.session_state.target_model)
-                # プロンプトをより具体的に
-                ocr_res = model.generate_content(["画像に書かれている英文を、テキストとして1行で書き出してください。余計な言葉や解説、挨拶は一切不要です。", img])
+                ocr_res = model.generate_content(["画像内の英文のみを抽出してテキストにしてください。挨拶や解説は不要です。", img])
                 st.session_state.ocr_text = ocr_res.text.strip()
-                st.success("読み取り完了！下の解答欄に反映されました。")
+                st.success(f"成功！ (使用モデル: {st.session_state.target_model})")
             except Exception as e:
-                # 404が出た場合はモデル名を再試行する仕組みを追加
-                st.error(f"OCRエラーが発生しました。モデル設定を確認中... 詳細: {e}")
+                st.error(f"OCR読み取りエラー: {e}")
 
 # 解答入力欄
 user_ans = st.text_input("あなたの答え:", value=st.session_state.get('ocr_text', ""), key=f"input_{st.session_state.current_idx}")
@@ -93,21 +97,14 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("採点"):
-        prompt = f"""
-        あなたは親切な日本人の英語教師です。
-        【正解例】: {q['english']}
-        【生徒の回答】: {user_ans}
-        上記を比較し、文法的な正確さを評価し、日本語のみで解説してください。
-        大きな見出しは使わず、読みやすい文字サイズで回答してください。
-        正解と一言一句同じでなくても、意味と文法が合っていれば大いに褒めてください。
-        """
+        prompt = f"英語教師として、回答『{user_ans}』を正解例『{q['english']}』と比較し、日本語で丁寧に解説してください。意味が合っていれば正解として褒めてください。"
         try:
             model = genai.GenerativeModel(st.session_state.target_model)
             res = model.generate_content(prompt)
             st.session_state.feedback_text = res.text
             st.session_state.show_feedback = True
             
-            # 正解判定（バルーン）
+            # バルーン判定
             user_clean = "".join(e for e in user_ans if e.isalnum()).lower()
             correct_clean = "".join(e for e in q['english'] if e.isalnum()).lower()
             if user_clean == correct_clean:
@@ -118,7 +115,7 @@ with col1:
 with col2:
     if st.button("正解と音声"):
         st.session_state.show_feedback = True
-        st.session_state.feedback_text = "正解と音声を確認して、声に出して練習しましょう！"
+        st.session_state.feedback_text = "正解を確認して、発音を聴いてみましょう。"
 
 with col3:
     if st.button("次へ"):
@@ -128,13 +125,11 @@ with col3:
             st.session_state.ocr_text = ""
             st.rerun()
         else:
-            st.success("全ての選んだ問題が終わりました！お疲れ様でした！")
+            st.success("全ての選んだ問題が終わりました！")
 
-# 結果表示
 if st.session_state.show_feedback:
     st.info(st.session_state.feedback_text)
     st.write(f"**【正解例】** {q['english']}")
-    
     tts = gTTS(q['english'], lang='en')
     fp = io.BytesIO()
     tts.write_to_fp(fp)
