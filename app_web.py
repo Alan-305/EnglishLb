@@ -9,7 +9,7 @@ from streamlit_cropper import st_cropper
 import datetime
 import requests
 
-# 1. ページ設定とスマホ特化デザイン（カメラ画面最大化）
+# 1. ページ設定とスマホ特化デザイン（カメラ画面最大化 & 英文拡大）
 st.set_page_config(page_title="基礎シリーズ 英語②T", layout="centered")
 
 st.markdown("""
@@ -123,10 +123,10 @@ with tab3: audio_file = st.audio_input("録音して提出", key=f"a_{st.session
 
 with tab4:
     st.subheader("松尾先生への報告")
-    WEB_APP_URL = "ここにあなたのGASのURLを貼り付けてください" 
+    WEB_APP_URL = "https://script.google.com/macros/s/XXXXX/exec" 
     with st.form(key="support_form", clear_on_submit=True):
         sender = st.text_input("お名前")
-        msg = st.text_area("メッセージ")
+        msg = st.text_area("メッセージ内容")
         if st.form_submit_button("送信"):
             if WEB_APP_URL.startswith("http"):
                 requests.post(WEB_APP_URL, json={"name": sender, "message": msg})
@@ -148,27 +148,26 @@ with st.expander("💡 ヒント（文字または音声）"):
             st.audio(af_h)
 
 # --- 採点アクション ---
-# 録音データがある場合、停止ボタンを押していなくても「採点する」で進めるようロジックを構成
 if st.button("🚀 採点する"):
     if not (cropped_image or user_text or audio_file):
-        st.warning("解答を提出してください。")
+        st.warning("いずれかの方法で解答を提出してください。")
     else:
         with st.spinner("添削中..."):
             try:
                 model = genai.GenerativeModel(st.session_state.target_model)
                 inst = f"""
                 あなたは経験豊富な英語予備校講師です。正解例『{q['english']}』と比較し、以下の通り添削してください。
-                - 1行目は必ず『あなたの英語：<b>[文字起こし結果]</b>』としてください。アスタリスク(**)や記号は絶対に使わないこと。
+                - 1行目は必ず『あなたの英語：<b>[ここに聞き取った英文]</b>』としてください。アスタリスク(**)や記号は絶対に使わないこと。
                 - 文法的に正しく、意味が完全に通じる別解であれば、正解例と単語が異なっても正解としてください。
-                - ミスがある場合は『惜しいです！ここを見直しましょう』と前向きに。不合格という言葉は禁止。
-                - 解説の英文は <b>英文</b> とタグで囲み、それ以外の記号（**や「」『』）は絶対に使わないこと。
+                - ミスがある場合は『惜しいです！ここを見直しましょう』と前向きに。不合格という言葉は厳禁。
+                - 解説の中の英文は <b>英文</b> とHTMLタグで囲み、それ以外の記号（**や「」『』）は絶対に使わない。
                 - 正解または妥当な別解の場合は、必ず文中に『正解です』と含めてください。
                 """
                 if audio_file: res = model.generate_content([inst, {"mime_type": "audio/wav", "data": audio_file.read()}])
                 elif cropped_image: res = model.generate_content([inst, cropped_image])
                 else: res = model.generate_content(f"{inst}\n生徒：{user_text}")
                 
-                # 強制フィルタ：記号や引用符を徹底排除
+                # 記号の強制除去フィルター
                 cleaned = res.text.replace("**", "").replace("「", "").replace("」", "").replace("『", "").replace("』", "")
                 st.session_state.feedback_text, st.session_state.show_feedback = cleaned, True
                 if "正解です" in cleaned: st.session_state.score += 1; st.balloons()
