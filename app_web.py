@@ -18,7 +18,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 変数の初期化（エラー防止） ---
+# --- 変数の初期化 ---
 for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list']:
     if key not in st.session_state:
         st.session_state[key] = False if key in ['finished', 'show_feedback'] else (0 if key != 'current_list' else None)
@@ -27,15 +27,9 @@ for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list']
 if 'target_model' not in st.session_state or st.session_state.target_model is None:
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # 利用可能なモデルをリストし、生成可能なものだけを抽出
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # 'flash'と名のつくモデルを優先（速くて安いため）
         flash_models = [m for m in available_models if 'flash' in m]
-        if flash_models:
-            st.session_state.target_model = flash_models[0]
-        else:
-            st.session_state.target_model = available_models[0]
+        st.session_state.target_model = flash_models[0] if flash_models else available_models[0]
         st.session_state.ai_configured = True
     except Exception as e:
         st.error(f"AI設定エラー: {e}")
@@ -89,7 +83,7 @@ if st.session_state.finished:
     <div class="score-box">
         <h2>最終成績</h2>
         <p style="font-size: 3em; color: #E74C3C;">{score} / {total}</p>
-        <p>素晴らしい挑戦でした！</p>
+        <p>素晴らしい挑戦でした！音読練習も継続しましょう。</p>
     </div>
     """, unsafe_allow_html=True)
     if st.button("もう一度挑戦する"):
@@ -107,32 +101,51 @@ q = st.session_state.current_list[st.session_state.current_idx]
 st.subheader(f"問 {q['no']}: {q['japanese']}")
 st.caption(f"{q['kou']} - {st.session_state.current_idx + 1} / {len(st.session_state.current_list)} 問目")
 
-# 解答入力（写真 or テキスト）
-tab1, tab2 = st.tabs(["📷 写真で提出", "⌨️ キーボード入力"])
+# --- 解答入力エリア（3つのタブ） ---
+tab1, tab2, tab3 = st.tabs(["📷 写真で提出", "⌨️ キーボード入力", "🎤 音声で提出"])
+
 with tab1:
     cam_file = st.camera_input("ノートを撮影", key=f"cam_{st.session_state.current_idx}")
-    up_file = st.file_uploader("写真をアップ", type=['png', 'jpg', 'jpeg'], key=f"up_{st.session_state.current_idx}")
-    active_image = cam_file if cam_file else up_file
+    active_image = cam_file
+
 with tab2:
     user_text = st.text_input("英文を入力", key=f"text_{st.session_state.current_idx}")
 
-# アクションボタン
+with tab3:
+    st.write("ボタンを押して英語を話してください。")
+    audio_file = st.audio_input("音声を録音", key=f"audio_{st.session_state.current_idx}")
+
+# --- 採点アクション ---
 col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("採点する"):
-        if not active_image and not user_text:
-            st.warning("解答を入力してください。")
+        if not active_image and not user_text and not audio_file:
+            st.warning("写真、テキスト、音声のいずれかで解答してください。")
         else:
             with st.spinner("AI先生が分析中..."):
                 try:
                     model = genai.GenerativeModel(st.session_state.target_model)
-                    instruction = f"英語教師として、正解例『{q['english']}』と比較し、日本語で丁寧に解説してください。正解なら文中に『正解です』と入れてください。"
+                    instruction = f"""
+                    あなたは親切な日本人英語教師です。
+                    生徒の回答を正解例『{q['english']}』と比較して採点してください。
                     
-                    if active_image:
+                    【判定ルール】
+                    1. テキストや画像の場合：綴りと文法をチェック。
+                    2. 音声の場合：話された内容を聞き取り、正解例と合っているか判定。発音へのアドバイスも一言添えてください。
+                    3. 日本語で解説し、正解なら文中に『正解です』と必ず入れてください。
+                    """
+                    
+                    if audio_file:
+                        # 音声データの処理
+                        audio_data = {"mime_type": "audio/wav", "data": audio_file.read()}
+                        res = model.generate_content([instruction, audio_data])
+                    elif active_image:
+                        # 画像データの処理
                         img = Image.open(active_image)
                         res = model.generate_content([instruction, img])
                     else:
+                        # テキストデータの処理
                         res = model.generate_content(f"{instruction}\n生徒の回答：{user_text}")
                     
                     st.session_state.feedback_text = res.text
@@ -146,7 +159,7 @@ with col1:
 with col2:
     if st.button("正解と音声"):
         st.session_state.show_feedback = True
-        st.session_state.feedback_text = "正解例を確認して練習しましょう。"
+        st.session_state.feedback_text = "正解例を確認して、自分の声と比較してみましょう。"
 
 with col3:
     label = "次へ" if st.session_state.current_idx < len(st.session_state.current_list) - 1 else "結果発表"
