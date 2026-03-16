@@ -20,33 +20,26 @@ st.markdown("""
         font-size: 1.5em; padding: 10px 0; border-bottom: 3px solid #ffcc80; 
         font-family: 'serif'; margin-bottom: 15px;
     }
-
-    /* カメラファインダーを大きく表示 */
     [data-testid="stCameraInput"] { width: 100% !important; }
-    
     div.stButton > button { 
         background-color: #f39c12 !important; color: white !important; 
         border-radius: 15px !important; height: 3.5em !important; 
         font-size: 1.1em !important; font-weight: bold !important; 
         border: none !important; width: 100%; margin-bottom: 8px;
     }
-
     div[data-testid="stVerticalBlock"] > div:has(div.stTabs) { 
         background-color: white !important; padding: 15px !important; 
         border-radius: 15px !important; border: 1px solid #ffe0b2 !important; 
     }
-
     .feedback-container { 
         background-color: #fff9f0; padding: 15px; border-radius: 10px; 
         border-left: 6px solid #f39c12; font-size: 1.1em; color: #5d4037; 
     }
-
-    /* 解説の中の英文。AIが出力した <b> タグの中身を大きく表示 */
+    /* 解説の中の英文を記号なしで大きく表示 */
     .feedback-container b, .feedback-container strong { 
         font-family: 'serif'; font-size: 1.35em; color: #784212; 
         background-color: #fff3e0; padding: 0 4px; font-weight: bold;
     }
-
     .model-answer-text { 
         font-family: 'serif'; font-size: 1.4em; font-weight: bold; 
         margin-top: 15px; color: #784212; border-top: 1px dashed #ffcc80; 
@@ -124,8 +117,8 @@ with tab2: user_text = st.text_input("回答をタイピング", key=f"t_{st.ses
 with tab3: audio_file = st.audio_input("録音して提出", key=f"a_{st.session_state.current_idx}")
 
 with tab4:
-    st.subheader("松尾先生への報告・メッセージ")
-    WEB_APP_URL = "https://script.google.com/macros/s/XXXXX/exec" 
+    st.subheader("松尾先生への報告")
+    WEB_APP_URL = "ここにあなたのGASのURLを貼り付けてください" 
     with st.form(key="support_form", clear_on_submit=True):
         sender = st.text_input("お名前")
         msg = st.text_area("メッセージ内容")
@@ -140,7 +133,6 @@ with st.expander("💡 ヒント（文字または音声）"):
     h_col1, h_col2 = st.columns(2)
     with h_col1:
         if st.button("文字で見る"):
-            # 【修正：最初の3単語を表示】
             words = q['english'].split()
             hint_text = " ".join(words[:3]) + " ..."
             st.info(f"冒頭: {hint_text}")
@@ -154,28 +146,27 @@ with st.expander("💡 ヒント（文字または音声）"):
 # --- 採点アクション ---
 if st.button("🚀 採点する"):
     if not (cropped_image or user_text or audio_file):
-        st.warning("いずれかの方法で解答を提出してください。")
+        st.warning("解答を提出してください。")
     else:
-        with st.spinner("AI採点中..."):
+        with st.spinner("厳格に採点中..."):
             try:
                 model = genai.GenerativeModel(st.session_state.target_model)
                 inst = f"""
-                正解例『{q['english']}』と比較し、以下の形式で添削してください。
-                - 1行目は『あなたの英語：<b>[文字起こし結果]</b>』としてください。アスタリスクや記号は一切使わないこと。
-                - 2行目以降に日本語で添削。
-                - 解説の中の英文は必ず <b>英文</b> のようにHTMLタグで囲む。
-                - 日本語の引用符「」や『』、Markdownの ** は絶対に使わないこと。
-                - 正解例そのものの解説は不要。
-                - 正解なら『正解です』と含める。
+                あなたは厳しい英語予備校講師です。正解例『{q['english']}』と比較し、以下の通り厳格に添削してください。
+                - 1行目は必ず『あなたの英語：<b>[英文]</b>』としてください。アスタリスクや記号は絶対に使わないこと。
+                - 綴り、冠詞の有無、単複、前置詞の選択など、細部まで厳格にチェックしてください。
+                - わずかでもミスがあれば正解とは認めず、具体的にどこが誤りか日本語で指摘してください。
+                - 解説の中の英文は必ず <b>英文</b> のようにHTMLタグで囲み、それ以外の「」や『』、** などの記号は一切使わないでください。
+                - 正解例そのものの解説は不要です。
+                - 完璧な解答のみ『正解です』と認めてください。
                 """
                 if audio_file: res = model.generate_content([inst, {"mime_type": "audio/wav", "data": audio_file.read()}])
                 elif cropped_image: res = model.generate_content([inst, cropped_image])
                 else: res = model.generate_content(f"{inst}\n生徒：{user_text}")
                 
-                # 強制フィルタ：** を消去
-                cleaned_text = res.text.replace("**", "")
+                cleaned_text = res.text.replace("**", "").replace("「", "").replace("」", "").replace("『", "").replace("』", "")
                 st.session_state.feedback_text, st.session_state.show_feedback = cleaned_text, True
-                if "正解" in cleaned_text: st.session_state.score += 1; st.balloons()
+                if "正解です" in cleaned_text: st.session_state.score += 1; st.balloons()
             except Exception as e: st.error(f"Error: {e}")
 
 if st.session_state.show_feedback:
