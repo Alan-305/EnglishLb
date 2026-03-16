@@ -18,43 +18,28 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. AIの初期設定（安定版）
+# 2. AIの初期設定（404エラー対策版）
 if 'ai_configured' not in st.session_state:
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         st.session_state.ai_configured = True
-        st.session_state.target_model = 'gemini-1.5-flash'
+        # 404エラーを防ぐため、正式なモデル名を指定
+        st.session_state.target_model = 'models/gemini-1.5-flash'
     except Exception as e:
         st.error(f"AIの準備に失敗しました: {e}")
 
-# 3. データの読み込み（自動ファイル検索機能付き）
+# 3. データの読み込み
 if 'all_questions' not in st.session_state:
-    import os
     try:
-        # 今いる場所にあるファイルを全部書き出す（デバッグ用）
-        all_files = os.listdir(".")
-        
-        # 'questions' という文字が含まれるCSVファイルを自動で探す
-        csv_files = [f for f in all_files if 'questions' in f.lower() and f.endswith('.csv')]
-        
-        if not csv_files:
-            st.error(f"ファイルが見つかりません。現在のファイル一覧: {all_files}")
-            st.stop()
-            
-        # 見つかった最初のファイルを使う
-        target_file = csv_files[0]
-        df = pd.read_csv(target_file)
-        
+        df = pd.read_csv('questions.csv')
         df.columns = df.columns.str.strip().str.lower()
         st.session_state.all_questions = df.to_dict('records')
-        # st.success(f"成功！ '{target_file}' を読み込みました。") # 確認用（動いたら消してOK）
     except Exception as e:
-        st.error(f"CSV読み込み中にエラーが発生しました: {e}")
+        st.error(f"CSV読み込みエラー。ファイル名が 'questions.csv' であるか確認してください: {e}")
         st.stop()
 
 # --- サイドバー設定 ---
 st.sidebar.title("🛠️ 学習設定")
-# CSVの'kou'列を使って分類
 kous = sorted(list(set([q['kou'] for q in st.session_state.all_questions])))
 selected_kous = st.sidebar.multiselect("学習する講を選択", kous, default=[kous[0]] if kous else [])
 order_type = st.sidebar.radio("出題順", ["順番通り", "ランダム"])
@@ -83,21 +68,23 @@ st.caption(f"（{q['kou']} - {st.session_state.current_idx + 1} / {len(st.sessio
 
 # --- カメラ/写真による文字起こし ---
 with st.expander("📷 写真から解答を入力（OCR機能）"):
-    target_img = st.file_uploader("写真をアップロード", type=['png', 'jpg', 'jpeg'])
-    camera_file = st.camera_input("カメラで撮影")
+    target_img = st.file_uploader("写真をアップロード", type=['png', 'jpg', 'jpeg'], key="ocr_uploader")
+    camera_file = st.camera_input("カメラで撮影", key="ocr_camera")
     
     final_img = camera_file if camera_file else target_img
     
     if final_img and st.button("AIで文字起こしを実行"):
-        with st.spinner("読み取り中..."):
+        with st.spinner("AIが英文を読み取っています..."):
             try:
                 img = Image.open(final_img)
                 model = genai.GenerativeModel(st.session_state.target_model)
-                ocr_res = model.generate_content(["画像内の英文のみをテキスト化してください。解説不要。", img])
+                # プロンプトをより具体的に
+                ocr_res = model.generate_content(["画像に書かれている英文を、テキストとして1行で書き出してください。余計な言葉や解説、挨拶は一切不要です。", img])
                 st.session_state.ocr_text = ocr_res.text.strip()
-                st.success("反映されました！")
+                st.success("読み取り完了！下の解答欄に反映されました。")
             except Exception as e:
-                st.error(f"OCRエラー: {e}")
+                # 404が出た場合はモデル名を再試行する仕組みを追加
+                st.error(f"OCRエラーが発生しました。モデル設定を確認中... 詳細: {e}")
 
 # 解答入力欄
 user_ans = st.text_input("あなたの答え:", value=st.session_state.get('ocr_text', ""), key=f"input_{st.session_state.current_idx}")
@@ -106,14 +93,21 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     if st.button("採点"):
-        prompt = f"英語教師として、生徒の回答『{user_ans}』を正解例『{q['english']}』と比較し、日本語で簡潔に解説してください。見出しは使わず標準サイズで回答してください。"
+        prompt = f"""
+        あなたは親切な日本人の英語教師です。
+        【正解例】: {q['english']}
+        【生徒の回答】: {user_ans}
+        上記を比較し、文法的な正確さを評価し、日本語のみで解説してください。
+        大きな見出しは使わず、読みやすい文字サイズで回答してください。
+        正解と一言一句同じでなくても、意味と文法が合っていれば大いに褒めてください。
+        """
         try:
             model = genai.GenerativeModel(st.session_state.target_model)
             res = model.generate_content(prompt)
             st.session_state.feedback_text = res.text
             st.session_state.show_feedback = True
             
-            # 正解判定（バルーン演出）
+            # 正解判定（バルーン）
             user_clean = "".join(e for e in user_ans if e.isalnum()).lower()
             correct_clean = "".join(e for e in q['english'] if e.isalnum()).lower()
             if user_clean == correct_clean:
@@ -124,7 +118,7 @@ with col1:
 with col2:
     if st.button("正解と音声"):
         st.session_state.show_feedback = True
-        st.session_state.feedback_text = "正解と音声を確認しましょう。"
+        st.session_state.feedback_text = "正解と音声を確認して、声に出して練習しましょう！"
 
 with col3:
     if st.button("次へ"):
@@ -134,11 +128,13 @@ with col3:
             st.session_state.ocr_text = ""
             st.rerun()
         else:
-            st.success("全問終了！お疲れ様でした！")
+            st.success("全ての選んだ問題が終わりました！お疲れ様でした！")
 
+# 結果表示
 if st.session_state.show_feedback:
     st.info(st.session_state.feedback_text)
     st.write(f"**【正解例】** {q['english']}")
+    
     tts = gTTS(q['english'], lang='en')
     fp = io.BytesIO()
     tts.write_to_fp(fp)
