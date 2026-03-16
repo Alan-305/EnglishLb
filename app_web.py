@@ -27,14 +27,29 @@ if 'ai_configured' not in st.session_state:
     except Exception as e:
         st.error(f"AIの準備に失敗しました: {e}")
 
-# 3. データの読み込み
+# 3. データの読み込み（自動ファイル検索機能付き）
 if 'all_questions' not in st.session_state:
+    import os
     try:
-        df = pd.read_csv('questions.csv')
+        # 今いる場所にあるファイルを全部書き出す（デバッグ用）
+        all_files = os.listdir(".")
+        
+        # 'questions' という文字が含まれるCSVファイルを自動で探す
+        csv_files = [f for f in all_files if 'questions' in f.lower() and f.endswith('.csv')]
+        
+        if not csv_files:
+            st.error(f"ファイルが見つかりません。現在のファイル一覧: {all_files}")
+            st.stop()
+            
+        # 見つかった最初のファイルを使う
+        target_file = csv_files[0]
+        df = pd.read_csv(target_file)
+        
         df.columns = df.columns.str.strip().str.lower()
         st.session_state.all_questions = df.to_dict('records')
+        # st.success(f"成功！ '{target_file}' を読み込みました。") # 確認用（動いたら消してOK）
     except Exception as e:
-        st.error(f"CSV読み込みエラー: {e}")
+        st.error(f"CSV読み込み中にエラーが発生しました: {e}")
         st.stop()
 
 # --- サイドバー設定 ---
