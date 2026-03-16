@@ -10,7 +10,7 @@ import datetime
 import requests
 import re
 
-# 1. ページ設定とデザイン（カメラ最大化・記号なし設定）
+# 1. ページ設定とデザイン（スマホ特化 & 英文表示最適化）
 st.set_page_config(page_title="基礎シリーズ 英語②T", layout="centered")
 
 st.markdown("""
@@ -40,7 +40,7 @@ st.markdown("""
 
     .feedback-container { background-color: #fff9f0; padding: 15px; border-radius: 10px; border-left: 6px solid #f39c12; font-size: 1.1em; color: #5d4037; }
     
-    /* 英文表示の統一：記号なしで大きく表示 */
+    /* 英文表示の統一（記号なしで大きく表示） */
     .feedback-container b, .feedback-container strong { 
         font-family: 'serif'; font-size: 1.35em; color: #784212; 
         background-color: #fff3e0; padding: 0 4px; font-weight: bold;
@@ -51,9 +51,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 2. 変数の初期化
-for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list', 'feedback_text']:
+for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list', 'feedback_text', 'hint_audio']:
     if key not in st.session_state:
-        st.session_state[key] = False if key in ['finished', 'show_feedback'] else (0 if key not in ['current_list', 'feedback_text'] else None)
+        st.session_state[key] = False if key in ['finished', 'show_feedback'] else (0 if key not in ['current_list', 'feedback_text', 'hint_audio'] else None)
 
 # 3. AI設定
 if 'target_model' not in st.session_state or st.session_state.target_model is None:
@@ -125,7 +125,7 @@ with tab3:
 
 with tab4:
     st.subheader("松尾先生への報告")
-    WEB_APP_URL = "https://script.google.com/macros/s/XXXXX/exec" 
+    WEB_APP_URL = "ここにあなたのGASのURLを貼り付けてください" 
     with st.form(key="support_form", clear_on_submit=True):
         sender = st.text_input("お名前")
         msg = st.text_area("メッセージ内容")
@@ -147,19 +147,20 @@ with st.expander("💡 ヒント（文字または音声）"):
             tts_h = gTTS(q['english'], lang='en')
             af_h = io.BytesIO()
             tts_h.write_to_fp(af_h)
-            st.audio(af_h)
+            # 【修正：自動再生を有効にする】
+            st.audio(af_h, autoplay=True)
 
 # --- 採点アクション ---
 if st.button("🚀 採点する"):
-    # 録音中の場合、audio_fileはNoneになるため、その際の警告を改善
     if not (cropped_image or user_text or audio_file):
         st.warning("⚠️ 録音中の場合は、マイクボタンを一度押して「停止」してから採点ボタンを押してください。")
     else:
-        with st.spinner("松尾先生が添削中..."):
+        # 【修正：スピナー文言のシンプル化】
+        with st.spinner("添削中..."):
             try:
                 model = genai.GenerativeModel(st.session_state.target_model)
                 inst = f"""
-                あなたは英語予備校講師の助手です。正解例『{q['english']}』と比較し、以下の通り添削してください。
+                あなたは経験豊富な英語予備校講師の助手です。正解例『{q['english']}』と比較し、以下の通り添削してください。
                 - 1行目は： あなたの英語：<b>[聞き取った英文]</b> （※**などの記号は一切禁止）
                 - 2行目以降： 日本語でアドバイス。
                 - 解説中の英文引用は <b>英文</b> とタグで囲み、記号（**、「」、『』）は絶対に使わない。
@@ -171,9 +172,8 @@ if st.button("🚀 採点する"):
                 elif cropped_image: res = model.generate_content([inst, cropped_image])
                 else: res = model.generate_content(f"{inst}\n生徒：{user_text}")
                 
-                # 【記号物理除去フィルター】表示前にすべての迷惑な記号を消し去る
-                f_text = res.text
-                f_text = f_text.replace("**", "")
+                # 物理フィルター：記号を強制削除
+                f_text = res.text.replace("**", "")
                 f_text = re.sub(r'[「」『』]', '', f_text)
                 
                 st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
@@ -182,7 +182,6 @@ if st.button("🚀 採点する"):
 
 if st.session_state.show_feedback:
     st.markdown("---")
-    # あなたの英語：の部分もCSSで自動的に大きく表示されます
     st.markdown(f"<div class='feedback-container'><div>{st.session_state.feedback_text}</div><div class='model-answer-text'>模範解答：{q['english']}</div></div>", unsafe_allow_html=True)
     tts = gTTS(q['english'], lang='en')
     audio_fp = io.BytesIO()
