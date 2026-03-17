@@ -11,10 +11,10 @@ from PIL import Image
 from streamlit_cropper import st_cropper
 import re
 
-# --- 1. ページ設定 ---
+# 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# CSS: 英文サイズ（1.4em）の統一とデザイン
+# CSS: 英文サイズと行間の微調整
 st.markdown("""
 <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff3e0 100%); }
@@ -29,25 +29,48 @@ st.markdown("""
         font-size: 1.1em !important; font-weight: bold !important; 
         width: 100%;
     }
-    .feedback-container { background-color: #fff9f0; padding: 20px; border-radius: 15px; border-left: 8px solid #f39c12; margin-top: 15px; white-space: pre-wrap; }
-    
-    /* 解説中の英文引用(bタグ)を模範解答と同じ1.4emにする */
-    .feedback-container b, .feedback-container strong { 
-        font-family: 'serif'; font-size: 1.4em; color: #784212; 
-        background-color: #fff3e0; padding: 0 4px; font-weight: bold;
+    /* 解説エリアの行間を少し詰め、全体をスッキリさせる */
+    .feedback-container { 
+        background-color: #fff9f0; 
+        padding: 15px 20px; 
+        border-radius: 15px; 
+        border-left: 8px solid #f39c12; 
+        margin-top: 15px; 
+        white-space: pre-wrap;
+        line-height: 1.4; /* 行間を詰め気味に設定 */
     }
-    .model-answer-text { font-family: 'serif'; font-size: 1.4em; font-weight: bold; margin-top: 15px; color: #784212; border-top: 1px dashed #ffcc80; padding-top: 10px; }
+    
+    /* 解説中の英文(bタグ): 1.4emから1.25emへ少し縮小 */
+    .feedback-container b, .feedback-container strong { 
+        font-family: 'serif'; 
+        font-size: 1.25em; 
+        color: #784212; 
+        background-color: #fff3e0; 
+        padding: 0 2px; 
+        font-weight: bold;
+    }
+    
+    /* 模範解答（最下部）は目立つように1.4emを維持 */
+    .model-answer-text { 
+        font-family: 'serif'; 
+        font-size: 1.4em; 
+        font-weight: bold; 
+        margin-top: 12px; 
+        color: #784212; 
+        border-top: 1px dashed #ffcc80; 
+        padding-top: 8px; 
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 class='main-title'>基礎シリーズ_英語②_T_重要文例</h1>", unsafe_allow_html=True)
 
-# --- 2. セッション変数の初期化 ---
+# 2. セッション変数の初期化
 for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list', 'feedback_text']:
     if key not in st.session_state:
         st.session_state[key] = False if 'finished' in key or 'show' in key else (0 if 'idx' in key or 'score' in key else None)
 
-# --- 3. データの読み込み ---
+# 3. データの読み込み
 if 'all_questions' not in st.session_state:
     try:
         df = pd.read_csv('questions.csv')
@@ -57,7 +80,7 @@ if 'all_questions' not in st.session_state:
         st.error("questions.csvが読み込めません。")
         st.stop()
 
-# --- 4. サイドバー ---
+# 4. サイドバー
 st.sidebar.title("📚 Menu")
 if st.sidebar.button("最初からリセット"):
     st.session_state.clear()
@@ -76,7 +99,7 @@ if st.sidebar.button("学習スタート"):
         st.session_state.finished, st.session_state.show_feedback = False, False
         st.rerun()
 
-# --- 5. メイン画面制御 ---
+# 5. メイン制御
 if st.session_state.current_list is None:
     st.info("👈 左のメニューから講を選んでスタートしてください。")
     st.stop()
@@ -95,7 +118,6 @@ ans_text = q.get('english', q.get('answer', ''))
 st.write(f"### 第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}")
 st.write(f"## {q.get('japanese', '')}")
 
-# --- 6. ヒント機能 ---
 with st.expander("💡 ヒント（文字または音声）"):
     h_col1, h_col2 = st.columns(2)
     with h_col1:
@@ -107,9 +129,9 @@ with st.expander("💡 ヒント（文字または音声）"):
             tts_h = gTTS(ans_text, lang='en')
             af_h = io.BytesIO()
             tts_h.write_to_fp(af_h)
-            st.audio(af_h, autoplay=False) # 自動再生させない
+            st.audio(af_h, autoplay=False)
 
-# --- 7. タブ機能 ---
+# 6. タブ
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
 
 img_for_ai = None
@@ -131,7 +153,7 @@ with tab4:
         st.text_area("メッセージ")
         if st.form_submit_button("送信"): st.success("報告を受け付けました！")
 
-# --- 8. 操作ボタン ---
+# 7. 採点ボタン & Next
 st.markdown("---")
 col1, col2 = st.columns(2)
 
@@ -143,13 +165,12 @@ with col1:
             with st.spinner("添削中..."):
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    
-                    # 【404対策】現在使えるモデルを自動検知して繋ぐ
+                    # 404対策
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     target_model = next((m for m in models if 'flash' in m), models[0])
                     model = genai.GenerativeModel(target_model)
                     
-                    prompt = f"""英語講師として添削してください。
+                    prompt = f"""経験豊富な英語講師として添削してください。
                     日本文：『{q.get('japanese','')}』
                     模範解答：『{ans_text}』
                     
@@ -166,13 +187,12 @@ with col1:
                     - 「不合格」という言葉、記号 ** は絶対に使用禁止。
                     - 正解なら「正解です」を含める。"""
 
-                    user_ans_label = typed_ans if typed_ans else "（音声または画像での解答）"
-                    content = [prompt]
-                    if img_for_ai: content.append(img_for_ai)
-                    elif audio_data: content.append({"mime_type": "audio/wav", "data": audio_data.read()})
-                    else: content.append(f"生徒の解答：{user_ans_label}")
+                    input_content = [prompt]
+                    if img_for_ai: input_content.append(img_for_ai)
+                    elif audio_data: input_content.append({"mime_type": "audio/wav", "data": audio_data.read()})
+                    else: input_content.append(f"生徒の解答：{typed_ans}")
 
-                    response = model.generate_content(content)
+                    response = model.generate_content(input_content)
                     f_text = response.text.replace("**", "").replace("「英文」", "").replace("英文：", "")
                     
                     st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
@@ -190,10 +210,10 @@ with col2:
         st.session_state.show_feedback = False
         st.rerun()
 
-# --- 9. 添削結果表示 ---
+# 8. 結果表示
 if st.session_state.show_feedback:
     st.markdown(f"<div class='feedback-container'>{st.session_state.feedback_text}<div class='model-answer-text'>模範解答：{ans_text}</div></div>", unsafe_allow_html=True)
     tts = gTTS(ans_text, lang='en')
     af = io.BytesIO()
     tts.write_to_fp(af)
-    st.audio(af, autoplay=False) # 勝手に読み上げない
+    st.audio(af, autoplay=False)
