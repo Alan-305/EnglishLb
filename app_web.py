@@ -15,7 +15,7 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# CSS: 英文のサイズを模範解答(1.4em)に合わせる
+# CSS: デザインと英文サイズの統一
 st.markdown("""
 <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff3e0 100%); }
@@ -84,7 +84,7 @@ if st.session_state.current_list is None:
 
 if st.session_state.finished:
     st.balloons()
-    st.success(f"全問終了！ スコア: {st.session_state.score} / {len(st.session_state.current_list)}")
+    st.success(f"全問終了！ 今回のスコア: {st.session_state.score} / {len(st.session_state.current_list)}")
     if st.button("最初に戻る"):
         st.session_state.clear()
         st.rerun()
@@ -96,6 +96,7 @@ ans_text = q.get('english', q.get('answer', ''))
 st.write(f"### 第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}")
 st.write(f"## {q.get('japanese', '')}")
 
+# 【復活】ヒント機能
 with st.expander("💡 ヒント（文字または音声）"):
     h_col1, h_col2 = st.columns(2)
     with h_col1:
@@ -137,12 +138,16 @@ if st.button("🚀 採点する"):
     if not (typed_ans or audio_data or img_for_ai):
         st.warning("⚠️ 解答を入力してください。")
     else:
+        # 指示2：添削中の表示
         with st.spinner("添削中..."):
             try:
                 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                model = genai.GenerativeModel('gemini-1.5-flash')
                 
-                # 指示の改善：構成とタグ、不要な文字の禁止を徹底
+                # 【404エラー対策】利用可能なモデルを動的に取得
+                models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                target_model = next((m for m in models if 'flash' in m), models[0])
+                model = genai.GenerativeModel(target_model)
+                
                 prompt = f"""経験豊富な英語講師として、生徒の解答を添削してください。
                 日本文：『{q.get('japanese','')}』
                 模範解答：『{ans_text}』
@@ -160,22 +165,23 @@ if st.button("🚀 採点する"):
                 - 「不合格」という言葉、記号 ** は絶対に使用禁止。
                 - 前向きに励ますこと。正解なら「正解です」を含める。"""
 
-                input_data = [prompt]
-                if img_for_ai: input_data.append(img_for_ai)
-                elif audio_data: input_data.append({"mime_type": "audio/wav", "data": audio_data.read()})
-                else: input_data.append(f"生徒の解答：{typed_ans}")
+                user_input = typed_ans if typed_ans else "（音声または画像での解答）"
+                content = [prompt]
+                if img_for_ai: content.append(img_for_ai)
+                elif audio_data: content.append({"mime_type": "audio/wav", "data": audio_data.read()})
+                else: content.append(f"生徒の解答：{user_input}")
 
-                response = model.generate_content(input_data)
+                response = model.generate_content(content)
                 
-                # 念のための物理フィルター
-                clean_text = response.text.replace("**", "").replace("「英文」", "").replace("英文：", "")
-                st.session_state.feedback_text, st.session_state.show_feedback = clean_text, True
+                # 物理フィルター
+                f_text = response.text.replace("**", "").replace("「英文」", "").replace("英文：", "")
+                st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
                 
-                if any(word in clean_text for word in ["正解", "Perfect", "お見事", "素晴らしい"]):
+                if any(word in f_text for word in ["正解", "Perfect", "お見事", "素晴らしい"]):
                     st.session_state.score += 1
                     st.balloons()
             except Exception as e:
-                st.error(f"エラー: {e}")
+                st.error(f"接続エラー: {e}")
 
 if st.session_state.show_feedback:
     st.markdown(f"<div class='feedback-container'>{st.session_state.feedback_text}<div class='model-answer-text'>模範解答：{ans_text}</div></div>", unsafe_allow_html=True)
