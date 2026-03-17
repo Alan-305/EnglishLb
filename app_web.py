@@ -13,7 +13,7 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# 2. デザイン設定（CSS） - サイドバーを隠さない安全な設定です
+# 2. デザイン設定（CSS）
 st.markdown("""
 <style>
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff3e0 100%); }
@@ -52,14 +52,11 @@ for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list',
     if key not in st.session_state:
         st.session_state[key] = False if key in ['finished', 'show_feedback'] else (0 if key not in ['current_list', 'feedback_text'] else None)
 
-# 4. AI設定（Pro版の正しい名前を指定）
-if 'target_model' not in st.session_state or st.session_state.target_model is None:
-    try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # エラー回避のため models/ を外し、最新の安定名を指定します
-        st.session_state.target_model = "gemini-1.5-pro"
-    except: 
-        st.session_state.target_model = "gemini-1.5-pro"
+# 4. AI設定
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+except:
+    st.error("APIキーが設定されていません。")
 
 # 5. データの読み込み
 if 'all_questions' not in st.session_state:
@@ -79,7 +76,6 @@ if st.sidebar.button("最初からリセット"):
 
 kous = sorted(list(set([str(q['kou']) for q in st.session_state.all_questions])))
 selected_kous = st.sidebar.multiselect("講を選択してください", kous)
-# 改善点1：出題順の選択を追加
 order_type = st.sidebar.radio("出題順を選択", ["順番通り", "ランダム"])
 
 if st.sidebar.button("学習スタート"):
@@ -94,7 +90,7 @@ if st.sidebar.button("学習スタート"):
 
 # --- メイン画面 ---
 if st.session_state.current_list is None:
-    st.info("👈 左側のメニューから「講」を選んで「学習スタート」を押してください。")
+    st.info("👈 左側のメニューから講を選んで学習スタートを押してください。")
     st.stop()
 
 if st.session_state.finished:
@@ -135,7 +131,6 @@ with tab4:
 
 st.markdown("---")
 
-# 改善点2：採点ボタンとNextボタンを並列に配置
 col1, col2 = st.columns(2)
 
 with col1:
@@ -145,23 +140,27 @@ with col1:
         else:
             with st.spinner("添削中..."):
                 try:
-                    # ここでProモデルを呼び出します
-                    model = genai.GenerativeModel(st.session_state.target_model)
+                    # 修正点：モデル名をPro版に指定
+                    try:
+                        model = genai.GenerativeModel("gemini-1.5-pro")
+                    except:
+                        # 万が一Proがダメな場合はFlashで動かす
+                        model = genai.GenerativeModel("gemini-1.5-flash")
+                        
                     inst = f"""
-                    あなたは情熱的な英語講師です。模範解答『{q['english']}』と比較してください。
+                    あなたは情熱的な英語講師です。模範解答 {q['english']} と比較してください。
                     
                     【厳守ルール】
                     - 1行目は： あなたの英語：<b>[内容]</b> （※記号**や「」は一切禁止）
                     - 文法的に正しく意味が通じれば別解も正解(Perfect!)とすること。
-                    - 厳格だが前向きに添削し、「不合格」という言葉は使わないこと。
+                    - 厳格だが前向きに添削し、不合格という言葉は使わないこと。
                     - 解説中の英文引用は <b>英文</b> とタグで囲み、記号 ** は絶対に使わない。
-                    - 正解・妥当な別解なら必ず『正解です』と含める。
+                    - 正解・妥当な別解なら必ず 正解です と含める。
                     """
                     if audio_file: res = model.generate_content([inst, {"mime_type": "audio/wav", "data": audio_file.read()}])
                     elif cropped_image: res = model.generate_content([inst, cropped_image])
                     else: res = model.generate_content(f"{inst}\n生徒：{user_text}")
                     
-                    # 記号を徹底削除するフィルター
                     f_text = res.text.replace("**", "").replace("「", "").replace("」", "").replace("『", "").replace("』", "")
                     st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
                     if "正解です" in f_text: st.session_state.score += 1; st.balloons()
@@ -175,7 +174,6 @@ with col2:
         st.rerun()
 
 if st.session_state.show_feedback:
-    st.markdown("---")
     st.markdown(f"<div class='feedback-container'><div>{st.session_state.feedback_text}</div><div class='model-answer-text'>模範解答：{q['english']}</div></div>", unsafe_allow_html=True)
     tts = gTTS(q['english'], lang='en')
     audio_fp = io.BytesIO()
