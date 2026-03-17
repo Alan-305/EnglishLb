@@ -15,37 +15,36 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# --- CSS: ライトモード固定・アイコン非表示・フォント指定 ---
+# --- CSS: サイドバー矢印を復活させつつ、余計なものを消し、ライトモードを固定 ---
 st.markdown("""
 <style>
-    /* 1. 標準メニュー、フッター、GitHubアイコン、ヘッダーを完全に隠す */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    /* 1. ヘッダー全体ではなく、ツールバー（GitHub/Menu）のみを消す */
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
     .viewerBadge_container__1QSob {display: none !important;}
-    
-    /* 2. ライトモード強制固定（背景と文字色） */
+
+    /* 2. ライトモード強制固定 */
+    /* 背景と文字色を白と黒に固定 */
     .stApp {
         background: #ffffff !important;
         color: #000000 !important;
     }
     
-    /* サイドバーのライトモード固定 */
+    /* サイドバーもライトモード固定 */
     [data-testid="stSidebar"] {
         background-color: #f8f9fa !important;
         color: #000000 !important;
     }
-
-    /* 入力エリアの視認性確保 */
-    input, textarea, [data-baseweb="input"], [data-baseweb="base-input"] {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        border: 1px solid #ffcc80 !important;
-    }
-
+    
     /* 3. フォント指定（日本語：明朝、英語：Century） */
     html, body, [class*="css"], .stMarkdown {
         font-family: "MS PMincho", "Hiragino Mincho ProN", serif !important;
+        color: #000000 !important;
+    }
+
+    /* 入力エリアの背景色も白に固定 */
+    input, textarea, [data-baseweb="input"], [data-baseweb="base-input"] {
+        background-color: #ffffff !important;
         color: #000000 !important;
     }
     
@@ -55,8 +54,8 @@ st.markdown("""
         font-size: 1.2em; padding: 8px 0; border-bottom: 3px solid #ffcc80; 
         margin-bottom: 12px; 
     }
-    .q-label { color: #784212 !important; font-weight: bold; font-size: 1.2em; margin-bottom: 2px; }
-    .q-text { color: #000000 !important; font-weight: bold; font-size: 1.2em; margin-top: 0px; margin-bottom: 15px; }
+    .q-label { color: #784212 !important; font-weight: bold; font-size: 1.2em; }
+    .q-text { color: #000000 !important; font-weight: bold; font-size: 1.2em; margin-bottom: 15px; }
     
     /* 5. 解説エリア */
     .feedback-container { 
