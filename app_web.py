@@ -10,7 +10,7 @@ import requests
 import re
 
 # --- 1. ページ設定 ---
-st.set_page_config(page_title="基礎シリーズ 英語学習アプリ", layout="centered")
+st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
 st.markdown("""
 <style>
@@ -18,7 +18,7 @@ st.markdown("""
     .main-title { 
         color: #e67e22; text-align: center; font-weight: 700; 
         font-size: 1.5em; padding: 10px 0; border-bottom: 3px solid #ffcc80; 
-        margin-bottom: 15px;
+        font-family: 'serif'; margin-bottom: 15px;
     }
     div.stButton > button { 
         background-color: #f39c12 !important; color: white !important; 
@@ -30,7 +30,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 class='main-title'>基礎シリーズ 英語②T</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>基礎シリーズ_英語②_T_重要文例</h1>", unsafe_allow_html=True)
 
 # --- 2. 変数の初期化 ---
 for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list', 'feedback_text']:
@@ -44,18 +44,17 @@ if 'all_questions' not in st.session_state:
         df.columns = df.columns.str.strip().str.lower()
         st.session_state.all_questions = df.to_dict('records')
     except:
-        st.error("questions.csvが読み込めません。")
+        st.error("questions.csvが読み込めません。GitHub上のファイル名と列名を確認してください。")
         st.stop()
 
-# --- 4. サイドバー（ランダム機能完備） ---
+# --- 4. サイドバー（ランダム機能 復活） ---
 st.sidebar.title("📚 Menu")
 if st.sidebar.button("最初からリセット"):
     st.session_state.clear()
     st.rerun()
 
-# 講のリスト作成
-kous = sorted(list(set([str(q.get('kou', q.get('lecture', '1'))) for q in st.session_state.all_questions])))
-selected_kous = st.sidebar.multiselect("講を選択してください", kous)
+all_kous = sorted(list(set([str(q.get('kou', q.get('lecture', '1'))) for q in st.session_state.all_questions])))
+selected_kous = st.sidebar.multiselect("講を選択してください", all_kous)
 order_type = st.sidebar.radio("出題順を選択", ["順番通り", "ランダム"])
 
 if st.sidebar.button("学習スタート"):
@@ -69,13 +68,13 @@ if st.sidebar.button("学習スタート"):
 
 # --- 5. メイン画面制御 ---
 if st.session_state.current_list is None:
-    st.info("👈 左のメニューから講を選んでスタートしてください。")
+    st.info("👈 左側のメニューから講を選んでスタートしてください。")
     st.stop()
 
 if st.session_state.finished:
     st.balloons()
-    st.success(f"終了！ スコア: {st.session_state.score} / {len(st.session_state.current_list)}")
-    if st.button("もう一度挑戦"):
+    st.success(f"全問終了です！ スコア: {st.session_state.score} / {len(st.session_state.current_list)}")
+    if st.button("最初に戻る"):
         st.session_state.clear()
         st.rerun()
     st.stop()
@@ -86,7 +85,7 @@ ans_text = q.get('english', q.get('answer', ''))
 st.write(f"### 第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}")
 st.write(f"## {q.get('japanese', '')}")
 
-# --- 6. タブ機能（報告も含む4つのタブ） ---
+# --- 6. タブ機能（「報告」も復活） ---
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
 
 img_for_ai = None
@@ -96,55 +95,56 @@ with tab1:
         img_for_ai = st_cropper(Image.open(raw_img), realtime_update=True, box_color='#f39c12')
 
 with tab2:
-    typed_ans = st.text_input("回答を入力", key=f"t_{st.session_state.current_idx}")
+    typed_ans = st.text_input("回答を入力してください", key=f"t_{st.session_state.current_idx}")
 
 with tab3:
     audio_data = st.audio_input("声に出して解答", key=f"a_{st.session_state.current_idx}")
 
 with tab4:
-    st.subheader("先生への報告")
+    st.subheader("松尾先生への報告")
     with st.form(key="report_form"):
         st.text_input("お名前")
         st.text_area("メッセージ")
         if st.form_submit_button("送信"):
-            st.success("報告を受け付けました！")
+            st.success("報告を受け付けました。ありがとうございます。")
 
-# --- 7. 採点ロジック（404対策） ---
+# --- 7. 採点ロジック（404エラー完全対策版） ---
 st.markdown("---")
-c1, c2 = st.columns(2)
+col1, col2 = st.columns(2)
 
-with c1:
+with col1:
     if st.button("🚀 採点する"):
         if not (typed_ans or audio_data or img_for_ai):
-            st.warning("⚠️ 解答を入力してください。")
+            st.warning("⚠️ 写真、打ち込み、音声のいずれかで解答してください。")
         else:
-            with st.spinner("AIが添削中..."):
+            with st.spinner("AI先生が接続を確認中..."):
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
-                    # 404エラー対策：利用可能なモデルから最適なものを自動選択
-                    try:
-                        model = genai.GenerativeModel('gemini-1.5-flash')
-                    except:
-                        model = genai.GenerativeModel('gemini-1.5-pro')
+                    # 404対策：利用可能な最新モデルをリストから検索して自動選択
+                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    # flashが含まれるモデルを優先的に探す
+                    target_model_name = next((m for m in available_models if 'flash' in m), available_models[0])
+                    model = genai.GenerativeModel(target_model_name)
                     
-                    prompt = f"英語講師として添削して。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。別解も正解(Perfect!)として。不合格という言葉、記号、カギカッコは禁止。前向きに。"
+                    prompt = f"英語講師として添削して。日本文『{q.get('japanese','')}』に対し、模範解答『{ans_text}』と比較して。文法的に正しければ別解も正解(Perfect!)として。不合格という言葉、記号、カギカッコは禁止。前向きに励まして。正解なら必ず「正解です」と含めて。"
 
                     if img_for_ai:
                         response = model.generate_content([prompt, img_for_ai])
                     elif audio_data:
                         response = model.generate_content([prompt, {"mime_type": "audio/wav", "data": audio_data.read()}])
                     else:
-                        response = model.generate_content(f"{prompt}\n生徒解答：{typed_ans}")
+                        response = model.generate_content(f"{prompt}\n生徒の回答：{typed_ans}")
                     
+                    # 記号の徹底排除フィルター
                     clean_text = re.sub(r'[\*「」『』]', '', response.text)
                     st.session_state.feedback_text, st.session_state.show_feedback = clean_text, True
-                    if "正解" in clean_text:
+                    if "正解です" in clean_text:
                         st.session_state.score += 1
                 except Exception as e:
-                    st.error(f"接続エラーが発生しました。設定を確認してください: {e}")
+                    st.error(f"接続エラー（404/401）が発生しました。設定を再確認してください: {e}")
 
-with c2:
+with col2:
     if st.button("次へ進む ➔"):
         st.session_state.current_idx += 1
         if st.session_state.current_idx >= len(st.session_state.current_list):
