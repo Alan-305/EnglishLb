@@ -15,20 +15,79 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# --- CSS: 先生こだわりのデザイン ---
+# --- CSS: ライトモード固定・アイコン非表示・フォント指定 ---
 st.markdown("""
 <style>
-    html, body, [class*="css"] { font-family: "MS PMincho", "Hiragino Mincho ProN", serif; }
-    .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff3e0 100%); }
-    .main-title { color: #e67e22; text-align: center; font-weight: 700; font-size: 1.2em; padding: 8px 0; border-bottom: 3px solid #ffcc80; margin-bottom: 12px; }
-    .q-label, .q-text { font-size: 1.2em; color: #784212; font-weight: bold; }
-    .feedback-container { background-color: #fff9f0; padding: 12px 18px; border-radius: 15px; border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line; line-height: 1.25 !important; font-size: 1.05em; color: #4e342e; }
-    .feedback-container b, .feedback-container strong { font-family: "Century", serif; font-size: 1.05em; color: #784212; background-color: #fff3e0; padding: 0 2px; }
-    .model-answer-text { font-family: "Century", serif; font-size: 1.05em; font-weight: bold; margin-top: 8px !important; color: #784212; border-top: 1px dashed #ffcc80; padding-top: 5px; }
-    div.stButton > button { background-color: #f39c12 !important; color: white !important; border-radius: 15px !important; height: 3.5em !important; font-weight: bold !important; width: 100%; }
+    /* 1. 標準メニュー、フッター、GitHubアイコン、ヘッダーを完全に隠す */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .viewerBadge_container__1QSob {display: none !important;}
+    
+    /* 2. ライトモード強制固定（背景と文字色） */
+    .stApp {
+        background: #ffffff !important;
+        color: #000000 !important;
+    }
+    
+    /* サイドバーのライトモード固定 */
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa !important;
+        color: #000000 !important;
+    }
+
+    /* 入力エリアの視認性確保 */
+    input, textarea, [data-baseweb="input"], [data-baseweb="base-input"] {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        border: 1px solid #ffcc80 !important;
+    }
+
+    /* 3. フォント指定（日本語：明朝、英語：Century） */
+    html, body, [class*="css"], .stMarkdown {
+        font-family: "MS PMincho", "Hiragino Mincho ProN", serif !important;
+        color: #000000 !important;
+    }
+    
+    /* 4. タイトルと問題文 */
+    .main-title { 
+        color: #e67e22 !important; text-align: center; font-weight: 700; 
+        font-size: 1.2em; padding: 8px 0; border-bottom: 3px solid #ffcc80; 
+        margin-bottom: 12px; 
+    }
+    .q-label { color: #784212 !important; font-weight: bold; font-size: 1.2em; margin-bottom: 2px; }
+    .q-text { color: #000000 !important; font-weight: bold; font-size: 1.2em; margin-top: 0px; margin-bottom: 15px; }
+    
+    /* 5. 解説エリア */
+    .feedback-container { 
+        background-color: #fff9f0 !important; padding: 12px 18px; border-radius: 15px; 
+        border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line; 
+        line-height: 1.3 !important; font-size: 1.05em; color: #4e342e !important; 
+    }
+    
+    /* 英文(bタグ)および「あなたの解答」はCentury */
+    .feedback-container b, .feedback-container strong { 
+        font-family: "Century", "Times New Roman", serif !important; 
+        font-size: 1.05em; color: #784212 !important; 
+        background-color: #fff3e0 !important; padding: 0 2px; 
+    }
+    .model-answer-text { 
+        font-family: "Century", serif !important; font-size: 1.05em; font-weight: bold; 
+        margin-top: 8px !important; color: #784212 !important; 
+        border-top: 1px dashed #ffcc80; padding-top: 5px; 
+    }
+    
+    /* 6. ボタン */
+    div.stButton > button { 
+        background-color: #f39c12 !important; color: white !important; 
+        border-radius: 15px !important; height: 3.5em !important; 
+        font-weight: bold !important; width: 100%; 
+    }
+
+    /* 7. チャット吹き出し */
     .chat-bubble { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; line-height: 1.4; font-size: 1.05em; }
-    .user-bubble { background-color: #ffe0b2; color: #784212; border: 1px solid #ffcc80; }
-    .ai-bubble { background-color: #ffffff; border: 1px solid #ffcc80; color: #4e342e; }
+    .user-bubble { background-color: #ffe0b2 !important; color: #784212 !important; border: 1px solid #ffcc80; }
+    .ai-bubble { background-color: #ffffff !important; border: 1px solid #ffcc80; color: #4e342e !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -40,18 +99,13 @@ for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list',
         if key == 'chat_history': st.session_state[key] = []
         else: st.session_state[key] = False if 'finished' in key or 'show' in key else (0 if 'idx' in key or 'score' in key else None)
 
-# --- 💡 修正ポイント：モデル名を動的に取得する関数 ---
 def get_best_model():
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        # gemini-3-flash (2026年最新) を優先的に探し、なければ flash 系の最新を選ぶ
-        target = next((m for m in models if 'gemini-3-flash' in m), None)
-        if not target:
-            target = next((m for m in models if 'flash' in m), 'gemini-1.5-flash')
+        target = next((m for m in models if 'flash' in m), 'gemini-1.5-flash')
         return target
-    except:
-        return 'gemini-1.5-flash' # フォールバック用
+    except: return 'gemini-1.5-flash'
 
 # 3. データの読み込み
 if 'all_questions' not in st.session_state:
@@ -59,8 +113,7 @@ if 'all_questions' not in st.session_state:
         df = pd.read_csv('questions.csv')
         df.columns = df.columns.str.strip().str.lower()
         st.session_state.all_questions = df.to_dict('records')
-    except:
-        st.error("questions.csvが見つかりません。"); st.stop()
+    except: st.error("questions.csvが見つかりません。"); st.stop()
 
 # 4. サイドバー
 st.sidebar.title("📚 Menu")
@@ -76,8 +129,7 @@ if st.sidebar.button("学習スタート"):
         st.session_state.current_list, st.session_state.current_idx, st.session_state.score = data, 0, 0
         st.session_state.finished, st.session_state.show_feedback, st.session_state.chat_history = False, False, []; st.rerun()
 
-if st.session_state.current_list is None:
-    st.info("👈 講を選んでスタートしてください。"); st.stop()
+if st.session_state.current_list is None: st.info("👈 講を選んでスタートしてください。"); st.stop()
 
 if st.session_state.finished:
     st.balloons(); st.success(f"終了！ スコア: {st.session_state.score} / {len(st.session_state.current_list)}")
@@ -110,9 +162,8 @@ with tab4:
                 try:
                     res = requests.post(st.secrets["GAS_WEBAPP_URL"], json={"name": u_name, "message": r_msg, "question": q.get('japanese', '')}, timeout=10)
                     if res.status_code == 200: st.success("先生に送信しました。")
-                except: st.error("送信に失敗しました。")
+                except: st.error("送信失敗。")
 
-# --- 💡 修正ポイント：質問コーナーのモデル指定修正 ---
 with tab5:
     st.subheader("🤖 AI講師に質問")
     for chat in st.session_state.chat_history:
@@ -124,24 +175,21 @@ with tab5:
         user_msg = st.text_area("質問内容（リターンキーで改行できます）", height=100)
         submitted = st.form_submit_button("⬆️ 質問を送信する")
         if submitted and user_msg:
-            st.session_state.chat_history.append({"role": "user", "content": user_msg})
-            st.rerun()
+            st.session_state.chat_history.append({"role": "user", "content": user_msg}); st.rerun()
 
 if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
-    with st.spinner("先生が回答を作成中..."):
+    with st.spinner("考え中..."):
         try:
             model = genai.GenerativeModel(get_best_model())
-            inst = f"英語講師です。問題『{q.get('japanese','')}』(模範解答：{ans_text})について解説。和訳は「」付。記号**禁止。日本語は明朝体、英語はCenturyで。"
+            inst = f"英語講師。問題『{q.get('japanese','')}』について解説。和訳は「」付。記号**禁止。"
             resp = model.generate_content([inst, st.session_state.chat_history[-1]["content"]])
-            st.session_state.chat_history.append({"role": "ai", "content": resp.text.replace("**", "")})
-            st.rerun()
+            st.session_state.chat_history.append({"role": "ai", "content": resp.text.replace("**", "")}); st.rerun()
         except Exception as e: st.error(f"質問回答エラー: {str(e)}")
 
-# --- 💡 修正ポイント：採点ボタンのモデル指定修正 ---
+# 8. 採点ボタン
 st.markdown("---")
 if st.button("🚀 採点する"):
-    if not (typed_ans or audio_data or img_for_ai):
-        st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
+    if not (typed_ans or audio_data or img_for_ai): st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
     else:
         with st.spinner("添削中..."):
             try:
@@ -156,9 +204,8 @@ if st.button("🚀 採点する"):
                 res = model.generate_content(inp)
                 f_text = res.text.replace("**", "")
                 st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
-                if any(w in f_text for w in ["正解", "Perfect", "お見事"]):
-                    st.session_state.score += 1; st.balloons()
-            except Exception as e: st.error(f"採点中に技術的なエラーが発生しました: {str(e)}")
+                if any(w in f_text for w in ["正解", "Perfect", "お見事"]): st.session_state.score += 1; st.balloons()
+            except Exception as e: st.error(f"採点エラー: {str(e)}")
 
 if st.button("次へ進む ➔"):
     st.session_state.current_idx += 1
