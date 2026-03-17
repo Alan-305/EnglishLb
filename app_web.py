@@ -15,11 +15,7 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# APIキーの設定（最初に行う）
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-
-# CSS: 先生こだわりのデザインを徹底
+# --- CSS: 先生こだわりのデザイン ---
 st.markdown("""
 <style>
     html, body, [class*="css"] { font-family: "MS PMincho", "Hiragino Mincho ProN", serif; }
@@ -30,8 +26,6 @@ st.markdown("""
     .feedback-container b, .feedback-container strong { font-family: "Century", serif; font-size: 1.05em; color: #784212; background-color: #fff3e0; padding: 0 2px; }
     .model-answer-text { font-family: "Century", serif; font-size: 1.05em; font-weight: bold; margin-top: 8px !important; color: #784212; border-top: 1px dashed #ffcc80; padding-top: 5px; }
     div.stButton > button { background-color: #f39c12 !important; color: white !important; border-radius: 15px !important; height: 3.5em !important; font-weight: bold !important; width: 100%; }
-    
-    /* チャット吹き出し */
     .chat-bubble { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; line-height: 1.4; font-size: 1.05em; }
     .user-bubble { background-color: #ffe0b2; color: #784212; border: 1px solid #ffcc80; }
     .ai-bubble { background-color: #ffffff; border: 1px solid #ffcc80; color: #4e342e; }
@@ -105,65 +99,77 @@ with tab4:
                     if res.status_code == 200: st.success("先生に送信しました。")
                 except: st.error("送信に失敗しました。")
 
-# --- 💡 修正ポイント：質問コーナー（誤送信防止＆安定化） ---
 with tab5:
     st.subheader("🤖 AI講師に質問")
-    # 履歴を表示
     for chat in st.session_state.chat_history:
         role_label = "👤 生徒" if chat["role"] == "user" else "🤖 先生"
         role_class = "user-bubble" if chat["role"] == "user" else "ai-bubble"
         st.markdown(f"<div class='chat-bubble {role_class}'><b>{role_label}:</b><br>{chat['content']}</div>", unsafe_allow_html=True)
 
-    # フォームを使用してリターンキー送信を回避
     with st.form("chat_input_form", clear_on_submit=True):
-        user_msg = st.text_area("質問内容（リターンキーで改行できます）", height=100, placeholder="例：この英文の文法を教えてください。")
+        user_msg = st.text_area("質問内容（リターンキーで改行できます）", height=100)
         submitted = st.form_submit_button("⬆️ 質問を送信する")
-        
         if submitted and user_msg:
             st.session_state.chat_history.append({"role": "user", "content": user_msg})
-            # ユーザーの質問を追加したら即リランして表示を更新し、AIの回答処理へ
             st.rerun()
 
-# AIの回答処理（履歴の最後がユーザーの場合に発動）
+# 質問コーナーのAI回答
 if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
-    with st.spinner("先生が回答を作成中..."):
+    with st.spinner("考え中..."):
         try:
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
             model = genai.GenerativeModel('gemini-1.5-flash')
-            chat_prompt = f"""親切な英語講師として回答してください。
-            現在、生徒は『{q.get('japanese','')}』(模範解答：{ans_text})という問題を解いています。
-            【ルール】
-            - 日本語は明朝体風、英語は Century 体。引用は <b> </b> で囲む。
-            - 記号 ** は絶対に使わない。
-            - 和訳を出すときは必ず「 」をつける。
-            - 回答は1行あけて整理する。"""
-            
-            response = model.generate_content([chat_prompt, st.session_state.chat_history[-1]["content"]])
-            ai_reply = response.text.replace("**", "")
-            st.session_state.chat_history.append({"role": "ai", "content": ai_reply})
+            inst = f"英語講師です。問題『{q.get('japanese','')}』について解説。和訳は「」付。記号**禁止。"
+            resp = model.generate_content([inst, st.session_state.chat_history[-1]["content"]])
+            st.session_state.chat_history.append({"role": "ai", "content": resp.text.replace("**", "")})
             st.rerun()
-        except Exception as e:
-            st.error(f"申し訳ありません。回答中にエラーが発生しました。時間を置いて再度お試しください。")
+        except Exception as e: st.error(f"質問回答エラー: {str(e)}")
 
-# --- 8. 採点ボタン ---
+# --- 💡 修正ポイント：採点ボタン（エラー回避強化） ---
 st.markdown("---")
 if st.button("🚀 採点する"):
-    if not (typed_ans or audio_data or img_for_ai): st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
+    if not (typed_ans or audio_data or img_for_ai):
+        st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
     else:
         with st.spinner("添削中..."):
             try:
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                v_rule = "音声入力時は大文字小文字・句読点を一切不問とし、語順が合っていれば正解とせよ。" if input_type == "voice" else ""
-                prompt = f"""英語講師として添削。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{v_rule}
+                # APIの再設定とモデル取得を確実に
+                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                
+                # 利用可能なモデルを動的にチェック
+                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                model_name = next((m for m in available_models if 'flash' in m), 'gemini-1.5-flash')
+                model = genai.GenerativeModel(model_name)
+                
+                voice_rule = "音声入力時は大文字小文字・句読点を一切不問とし、語順が合っていれば正解とせよ。" if input_type == "voice" else ""
+                
+                prompt = f"""英語講師として添削。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{voice_rule}
                 【構成】1:評価、2:あなたの解答：<b>[生徒の解答をCentury体で表示]</b>、(空行)、3:解説(和訳は「 」付)。不合格禁止。回答に**は入れない。"""
-                inp = [prompt]
-                if img_for_ai: inp.append(img_for_ai)
-                elif audio_data: inp.append({"mime_type": "audio/wav", "data": audio_data.read()})
-                else: inp.append(f"生徒の解答：{typed_ans}")
-                res = model.generate_content(inp)
-                f_text = res.text.replace("**", "")
-                st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
-                if any(w in f_text for w in ["正解", "Perfect"]): st.session_state.score += 1; st.balloons()
-            except: st.error("採点中にエラーが発生しました。")
+                
+                content_to_send = [prompt]
+                if img_for_ai:
+                    content_to_send.append(img_for_ai)
+                elif audio_data:
+                    # 音声データの読み込みをより安全に
+                    audio_bytes = audio_data.read()
+                    content_to_send.append({"mime_type": "audio/wav", "data": audio_bytes})
+                else:
+                    content_to_send.append(f"生徒の解答：{typed_ans}")
+                
+                # タイムアウト対策を含めた実行
+                response = model.generate_content(content_to_send)
+                
+                if response:
+                    f_text = response.text.replace("**", "")
+                    st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
+                    if any(w in f_text for w in ["正解", "Perfect", "お見事"]):
+                        st.session_state.score += 1; st.balloons()
+                else:
+                    st.error("AIからの返答が空でした。もう一度お試しください。")
+            except Exception as e:
+                # エラーの内容を詳細に表示
+                st.error(f"採点中に技術的なエラーが発生しました: {str(e)}")
+                st.info("💡 ヒント: インターネット接続を確認するか、数秒待ってから再度『採点する』を押してください。")
 
 if st.button("次へ進む ➔"):
     st.session_state.current_idx += 1
