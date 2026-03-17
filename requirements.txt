@@ -1,6 +1,9 @@
+streamlit>=1.40.0
 google-generativeai
 pandas
 gTTS
 Pillow
 streamlit-cropper
 requests
+setuptools
+protobuf==3.20.3
