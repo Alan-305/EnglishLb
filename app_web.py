@@ -30,7 +30,6 @@ st.markdown("""
     .q-label { margin-bottom: 2px; }
     .q-text { margin-top: 0px; margin-bottom: 15px; }
 
-    /* 解説エリア：行間を詰め、文字サイズを1.05emに統一 */
     .feedback-container { 
         background-color: #fff9f0; padding: 12px 18px; border-radius: 15px; 
         border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line;
@@ -38,7 +37,7 @@ st.markdown("""
     }
     .feedback-container * { margin-top: 0px !important; margin-bottom: 2px !important; }
     
-    /* 英文(bタグ)および解答部分はCentury */
+    /* 英文(bタグ)および「あなたの解答」はCentury */
     .feedback-container b, .feedback-container strong { 
         font-family: "Century", "Times New Roman", serif; font-size: 1.05em;
         color: #784212; background-color: #fff3e0; padding: 0 2px;
@@ -123,7 +122,7 @@ with st.expander("💡 ヒント"):
 # 7. タブ
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
 img_for_ai = None
-input_type = "typed" # デフォルト
+input_type = "typed"
 
 with tab1:
     raw = st.camera_input("撮影", key=f"c_{st.session_state.current_idx}")
@@ -147,7 +146,9 @@ st.markdown("---")
 c1, c2 = st.columns(2)
 with c1:
     if st.button("🚀 採点する"):
-        if not (typed_ans or audio_data or img_for_ai): st.warning("解答してください。")
+        # 指示：警告メッセージから「ストップ」を削除し、アイコンのみにする
+        if not (typed_ans or audio_data or img_for_ai):
+            st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
         else:
             with st.spinner("添削中..."):
                 try:
@@ -156,13 +157,12 @@ with c1:
                     model_name = next((m for m in available if 'flash' in m), 'gemini-1.5-flash')
                     model = genai.GenerativeModel(model_name)
                     
-                    # 採点基準の柔軟化をプロンプトに反映
-                    voice_rule = "【音声採点ルール】音声入力の場合は、大文字・小文字の区別、および句読点（. , ? ! など）の有無は一切不問とし、語順が合っていれば正解としてください。" if input_type == "voice" else ""
+                    # 音声採点ルール（大文字・句読点不問）
+                    voice_rule = "【音声採点ルール】音声入力の場合は、大文字・小文字の区別、および句読点（. , ? ! など）の有無は不問とし、語順が合っていれば正解としてください。" if input_type == "voice" else ""
 
-                    prompt = f"""経験豊富な英語講師として添削。
+                    prompt = f"""英語講師として添削。
                     日本文：『{q.get('japanese','')}』
                     模範解答：『{ans_text}』
-                    
                     {voice_rule}
 
                     【出力構成】
@@ -173,10 +173,11 @@ with c1:
 
                     【ルール】
                     - 解説内の英文引用は必ず <b> </b> タグで囲むこと。
-                    - 解説内の英文の「和訳」には必ず「 」をつける。
+                    - 解説の中の英語の和訳には必ず「 」をつけてください。
+                    - 「あなたの解答」の英語も他の英語と同じ書体（Century）にし、その後は1行空ける。
                     - 「英文」という文字、記号 ** は絶対に出力しない。
                     - 文法的に正しければ別解も正解とする。
-                    - 「不合格」は禁止。前向きに。
+                    - 「不合格」は禁止。前向きに。英文に「」はつけない。
                     - 正解なら必ず「正解です」を含める。"""
 
                     inp = [prompt]
