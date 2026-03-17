@@ -40,6 +40,19 @@ for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list',
         if key == 'chat_history': st.session_state[key] = []
         else: st.session_state[key] = False if 'finished' in key or 'show' in key else (0 if 'idx' in key or 'score' in key else None)
 
+# --- 💡 修正ポイント：モデル名を動的に取得する関数 ---
+def get_best_model():
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # gemini-3-flash (2026年最新) を優先的に探し、なければ flash 系の最新を選ぶ
+        target = next((m for m in models if 'gemini-3-flash' in m), None)
+        if not target:
+            target = next((m for m in models if 'flash' in m), 'gemini-1.5-flash')
+        return target
+    except:
+        return 'gemini-1.5-flash' # フォールバック用
+
 # 3. データの読み込み
 if 'all_questions' not in st.session_state:
     try:
@@ -99,6 +112,7 @@ with tab4:
                     if res.status_code == 200: st.success("先生に送信しました。")
                 except: st.error("送信に失敗しました。")
 
+# --- 💡 修正ポイント：質問コーナーのモデル指定修正 ---
 with tab5:
     st.subheader("🤖 AI講師に質問")
     for chat in st.session_state.chat_history:
@@ -113,19 +127,17 @@ with tab5:
             st.session_state.chat_history.append({"role": "user", "content": user_msg})
             st.rerun()
 
-# 質問コーナーのAI回答
 if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
-    with st.spinner("考え中..."):
+    with st.spinner("先生が回答を作成中..."):
         try:
-            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            inst = f"英語講師です。問題『{q.get('japanese','')}』について解説。和訳は「」付。記号**禁止。"
+            model = genai.GenerativeModel(get_best_model())
+            inst = f"英語講師です。問題『{q.get('japanese','')}』(模範解答：{ans_text})について解説。和訳は「」付。記号**禁止。日本語は明朝体、英語はCenturyで。"
             resp = model.generate_content([inst, st.session_state.chat_history[-1]["content"]])
             st.session_state.chat_history.append({"role": "ai", "content": resp.text.replace("**", "")})
             st.rerun()
         except Exception as e: st.error(f"質問回答エラー: {str(e)}")
 
-# --- 💡 修正ポイント：採点ボタン（エラー回避強化） ---
+# --- 💡 修正ポイント：採点ボタンのモデル指定修正 ---
 st.markdown("---")
 if st.button("🚀 採点する"):
     if not (typed_ans or audio_data or img_for_ai):
@@ -133,43 +145,20 @@ if st.button("🚀 採点する"):
     else:
         with st.spinner("添削中..."):
             try:
-                # APIの再設定とモデル取得を確実に
-                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                
-                # 利用可能なモデルを動的にチェック
-                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                model_name = next((m for m in available_models if 'flash' in m), 'gemini-1.5-flash')
-                model = genai.GenerativeModel(model_name)
-                
-                voice_rule = "音声入力時は大文字小文字・句読点を一切不問とし、語順が合っていれば正解とせよ。" if input_type == "voice" else ""
-                
-                prompt = f"""英語講師として添削。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{voice_rule}
+                model = genai.GenerativeModel(get_best_model())
+                v_rule = "音声入力時は大文字小文字・句読点を一切不問とし、語順が合っていれば正解とせよ。" if input_type == "voice" else ""
+                prompt = f"""英語講師として添削。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{v_rule}
                 【構成】1:評価、2:あなたの解答：<b>[生徒の解答をCentury体で表示]</b>、(空行)、3:解説(和訳は「 」付)。不合格禁止。回答に**は入れない。"""
-                
-                content_to_send = [prompt]
-                if img_for_ai:
-                    content_to_send.append(img_for_ai)
-                elif audio_data:
-                    # 音声データの読み込みをより安全に
-                    audio_bytes = audio_data.read()
-                    content_to_send.append({"mime_type": "audio/wav", "data": audio_bytes})
-                else:
-                    content_to_send.append(f"生徒の解答：{typed_ans}")
-                
-                # タイムアウト対策を含めた実行
-                response = model.generate_content(content_to_send)
-                
-                if response:
-                    f_text = response.text.replace("**", "")
-                    st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
-                    if any(w in f_text for w in ["正解", "Perfect", "お見事"]):
-                        st.session_state.score += 1; st.balloons()
-                else:
-                    st.error("AIからの返答が空でした。もう一度お試しください。")
-            except Exception as e:
-                # エラーの内容を詳細に表示
-                st.error(f"採点中に技術的なエラーが発生しました: {str(e)}")
-                st.info("💡 ヒント: インターネット接続を確認するか、数秒待ってから再度『採点する』を押してください。")
+                inp = [prompt]
+                if img_for_ai: inp.append(img_for_ai)
+                elif audio_data: inp.append({"mime_type": "audio/wav", "data": audio_data.read()})
+                else: inp.append(f"生徒の解答：{typed_ans}")
+                res = model.generate_content(inp)
+                f_text = res.text.replace("**", "")
+                st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
+                if any(w in f_text for w in ["正解", "Perfect", "お見事"]):
+                    st.session_state.score += 1; st.balloons()
+            except Exception as e: st.error(f"採点中に技術的なエラーが発生しました: {str(e)}")
 
 if st.button("次へ進む ➔"):
     st.session_state.current_idx += 1
