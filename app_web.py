@@ -14,7 +14,7 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# CSS: 先生こだわりのデザイン（タイトル1.2em / 明朝・Century / 行間圧縮）
+# CSS: フォント（明朝/Century）・サイズ・行間の詰めをすべて適用
 st.markdown("""
 <style>
     html, body, [class*="css"] {
@@ -30,7 +30,6 @@ st.markdown("""
     .q-label { margin-bottom: 2px; }
     .q-text { margin-top: 0px; margin-bottom: 15px; }
 
-    /* 解説エリア：行間を極限まで詰め、文字サイズを1.05emに統一 */
     .feedback-container { 
         background-color: #fff9f0; padding: 12px 18px; border-radius: 15px; 
         border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line;
@@ -38,7 +37,6 @@ st.markdown("""
     }
     .feedback-container * { margin-top: 0px !important; margin-bottom: 2px !important; }
     
-    /* 英文(bタグ)はCentury */
     .feedback-container b, .feedback-container strong { 
         font-family: "Century", "Times New Roman", serif; font-size: 1.05em;
         color: #784212; background-color: #fff3e0; padding: 0 2px;
@@ -109,7 +107,7 @@ ans_text = q.get('english', q.get('answer', ''))
 st.markdown(f"<div class='q-label'>第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}</div>", unsafe_allow_html=True)
 st.markdown(f"<div class='q-text'>{q.get('japanese', '')}</div>", unsafe_allow_html=True)
 
-# 6. ヒント機能（安定の手動再生）
+# 6. ヒント（安全な手動再生）
 with st.expander("💡 ヒント"):
     h_col1, h_col2 = st.columns(2)
     with h_col1:
@@ -118,7 +116,7 @@ with st.expander("💡 ヒント"):
         if st.button("音声を聞く"):
             tts_h = gTTS(ans_text, lang='en')
             af_h = io.BytesIO(); tts_h.write_to_fp(af_h)
-            st.audio(af_h, autoplay=False) # 元の安全な設定に戻しました
+            st.audio(af_h, autoplay=False)
 
 # 7. タブ
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
@@ -147,33 +145,41 @@ with c1:
                     model_name = next((m for m in available if 'flash' in m), 'gemini-1.5-flash')
                     model = genai.GenerativeModel(model_name)
                     
-                    prompt = f"""英語講師として添削。
+                    # 音声認識の「捏造」を厳禁する最強の指示
+                    prompt = f"""英語講師として厳格に添削してください。
+                    
+                    【最重要・厳守事項】
+                    もし音声データが入力された場合、あなたは「耳を澄ませる書き起こし役」に徹してください。
+                    「捏造」や「勝手な修正」は絶対に禁止です。
+                    生徒が発音したままの英文を、文法ミスがあっても、単語が抜けていても、聞こえた通りに2行目に書き出してください。
+                    
                     日本文：『{q.get('japanese','')}』
                     模範解答：『{ans_text}』
                     
                     【出力構成】
                     1行目：評価の言葉
-                    2行目：あなたの解答：[ここに生徒の解答を表示]
+                    2行目：あなたの解答：[ここで生徒の声を「聞こえた通りに」書き起こす]
                     3行目以降：解説
 
                     【ルール】
                     - 解説内の英文引用は <b> </b> で囲む。
                     - 「英文」という文字、記号 ** は絶対に出力しない。
                     - 文法的に正しければ別解も正解とする。
-                    - 「不合格」は禁止。前向きに。英文に「」はつけない。
+                    - 「不合格」は禁止。前向きに。
                     - 正解なら必ず「正解です」を含める。"""
 
-                    inp = [prompt]
-                    if img_for_ai: inp.append(img_for_ai)
-                    elif audio_data: inp.append({"mime_type": "audio/wav", "data": audio_data.read()})
-                    else: inp.append(f"生徒の解答：{typed_ans}")
+                    input_data = [prompt]
+                    if img_for_ai: input_data.append(img_for_ai)
+                    elif audio_data: input_data.append({"mime_type": "audio/wav", "data": audio_data.read()})
+                    else: input_data.append(f"生徒の解答：{typed_ans}")
 
-                    res = model.generate_content(inp)
+                    res = model.generate_content(input_data)
                     f_text = re.sub(r'[\*「」『』]', '', res.text).replace("英文：", "").replace("英文", "")
+                    
                     st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
                     if any(w in f_text for w in ["正解", "Perfect", "お見事"]):
                         st.session_state.score += 1; st.balloons()
-                except Exception as e: st.error(f"エラー: {e}")
+                except Exception as e: st.error(f"接続エラー: {e}")
 
 with c2:
     if st.button("次へ進む ➔"):
