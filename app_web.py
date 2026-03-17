@@ -46,7 +46,7 @@ if 'all_questions' not in st.session_state:
         st.error("questions.csvが読み込めません。")
         st.stop()
 
-# --- 4. サイドバー（設定） ---
+# --- 4. サイドバー（設定・ランダム） ---
 st.sidebar.title("📚 Menu")
 if st.sidebar.button("最初からリセット"):
     st.session_state.clear()
@@ -67,12 +67,12 @@ if st.sidebar.button("学習スタート"):
 
 # --- 5. メイン画面制御 ---
 if st.session_state.current_list is None:
-    st.info("👈 左側のメニューから講を選んでスタートしてください。")
+    st.info("👈 左のメニューから講を選んでスタートしてください。")
     st.stop()
 
 if st.session_state.finished:
-    st.balloons()
-    st.success(f"全問終了です！ スコア: {st.session_state.score} / {len(st.session_state.current_list)}")
+    st.balloons() # 全問終了時のお祝い
+    st.success(f"全問終了！ 今回のスコア: {st.session_state.score} / {len(st.session_state.current_list)}")
     if st.button("最初に戻る"):
         st.session_state.clear()
         st.rerun()
@@ -84,7 +84,7 @@ ans_text = q.get('english', q.get('answer', ''))
 st.write(f"### 第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}")
 st.write(f"## {q.get('japanese', '')}")
 
-# --- 6. ヒント機能（【復活】） ---
+# --- 6. ヒント機能 ---
 with st.expander("💡 ヒント（文字または音声）"):
     h_col1, h_col2 = st.columns(2)
     with h_col1:
@@ -98,7 +98,7 @@ with st.expander("💡 ヒント（文字または音声）"):
             tts_h.write_to_fp(af_h)
             st.audio(af_h, autoplay=True)
 
-# --- 7. タブ機能（4タブ完備） ---
+# --- 7. タブ機能（4タブ） ---
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
 
 img_for_ai = None
@@ -108,18 +108,17 @@ with tab1:
         img_for_ai = st_cropper(Image.open(raw_img), realtime_update=True, box_color='#f39c12')
 
 with tab2:
-    typed_ans = st.text_input("回答を入力してください", key=f"t_{st.session_state.current_idx}")
+    typed_ans = st.text_input("回答を入力", key=f"t_{st.session_state.current_idx}")
 
 with tab3:
     audio_data = st.audio_input("声に出して解答", key=f"a_{st.session_state.current_idx}")
 
 with tab4:
     st.subheader("松尾先生への報告")
-    with st.form(key="report_form"):
+    with st.form(key="report"):
         st.text_input("お名前")
         st.text_area("メッセージ")
-        if st.form_submit_button("送信"):
-            st.success("報告を受け付けました。ありがとうございます。")
+        if st.form_submit_button("送信"): st.success("報告を受け付けました！")
 
 # --- 8. 採点ロジック ---
 st.markdown("---")
@@ -134,12 +133,12 @@ with col1:
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     
-                    # 404対策：利用可能なモデルを自動取得
+                    # 404対策：利用可能なモデルを自動選択
                     available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     target_model = next((m for m in available_models if 'flash' in m), available_models[0])
                     model = genai.GenerativeModel(target_model)
                     
-                    prompt = f"英語講師として添削して。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。別解も正解(Perfect!)として。不合格という言葉、記号、カギカッコは禁止。前向きに励まして。正解なら必ず「正解です」と含めて。"
+                    prompt = f"英語講師として添削して。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。別解も正解(Perfect!)として。不合格という言葉、記号、カギカッコは禁止。励まして。正解なら必ず「正解です」という言葉を含めて。"
 
                     if img_for_ai:
                         response = model.generate_content([prompt, img_for_ai])
@@ -148,13 +147,18 @@ with col1:
                     else:
                         response = model.generate_content(f"{prompt}\n生徒解答：{typed_ans}")
                     
-                    # 記号の徹底排除フィルター
                     clean_text = re.sub(r'[\*「」『』]', '', response.text)
                     st.session_state.feedback_text, st.session_state.show_feedback = clean_text, True
-                    if "正解です" in clean_text:
+                    
+                    # 【重要：バルーンの判定強化】
+                    # 正解、Perfect、お見事、素晴らしい、などの言葉に反応するように
+                    praise_words = ["正解", "Perfect", "お見事", "素晴らしい", "Excellent", "Good job"]
+                    if any(word in clean_text for word in praise_words):
                         st.session_state.score += 1
+                        st.balloons() # ここでバルーンを飛ばす！
+                        
                 except Exception as e:
-                    st.error(f"接続エラーが発生しました: {e}")
+                    st.error(f"接続エラー: {e}")
 
 with col2:
     if st.button("次へ進む ➔"):
