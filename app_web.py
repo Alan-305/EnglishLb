@@ -9,60 +9,34 @@ from gtts import gTTS
 import io
 from PIL import Image
 from streamlit_cropper import st_cropper
+import requests
 import re
 
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# CSS: フォント（明朝/Century）・サイズ・行間の詰めをすべて適用
+# CSS: 明朝/Century/行間/サイズ
 st.markdown("""
 <style>
-    html, body, [class*="css"] {
-        font-family: "MS PMincho", "Hiragino Mincho ProN", serif;
-    }
+    html, body, [class*="css"] { font-family: "MS PMincho", "Hiragino Mincho ProN", serif; }
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff3e0 100%); }
-    .main-title { 
-        color: #e67e22; text-align: center; font-weight: 700; 
-        font-size: 1.2em; padding: 8px 0; border-bottom: 3px solid #ffcc80; 
-        font-family: 'serif'; margin-bottom: 12px;
-    }
+    .main-title { color: #e67e22; text-align: center; font-weight: 700; font-size: 1.2em; padding: 8px 0; border-bottom: 3px solid #ffcc80; margin-bottom: 12px; }
     .q-label, .q-text { font-size: 1.2em; color: #784212; font-weight: bold; }
-    .q-label { margin-bottom: 2px; }
-    .q-text { margin-top: 0px; margin-bottom: 15px; }
-
-    .feedback-container { 
-        background-color: #fff9f0; padding: 12px 18px; border-radius: 15px; 
-        border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line;
-        line-height: 1.25 !important; font-size: 1.05em; color: #4e342e;
-    }
-    .feedback-container * { margin-top: 0px !important; margin-bottom: 2px !important; }
-    
-    /* 英文(bタグ)および「あなたの解答」はCentury */
-    .feedback-container b, .feedback-container strong { 
-        font-family: "Century", "Times New Roman", serif; font-size: 1.05em;
-        color: #784212; background-color: #fff3e0; padding: 0 2px;
-    }
-    .model-answer-text { 
-        font-family: "Century", "Times New Roman", serif; font-size: 1.05em;
-        font-weight: bold; margin-top: 8px !important; color: #784212; 
-        border-top: 1px dashed #ffcc80; padding-top: 5px; 
-    }
-    div.stButton > button { 
-        background-color: #f39c12 !important; color: white !important; 
-        border-radius: 15px !important; height: 3.5em !important; 
-        font-size: 1.1em !important; font-weight: bold !important; width: 100%;
-    }
+    .feedback-container { background-color: #fff9f0; padding: 12px 18px; border-radius: 15px; border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line; line-height: 1.25 !important; font-size: 1.05em; color: #4e342e; }
+    .feedback-container b, .feedback-container strong { font-family: "Century", serif; font-size: 1.05em; color: #784212; background-color: #fff3e0; padding: 0 2px; }
+    .model-answer-text { font-family: "Century", serif; font-size: 1.05em; font-weight: bold; margin-top: 8px !important; color: #784212; border-top: 1px dashed #ffcc80; padding-top: 5px; }
+    div.stButton > button { background-color: #f39c12 !important; color: white !important; border-radius: 15px !important; height: 3.5em !important; font-weight: bold !important; width: 100%; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 class='main-title'>基礎シリーズ_英語②_T_重要文例</h1>", unsafe_allow_html=True)
 
-# 2. 変数の初期化
+# 2. 変数初期化
 for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list', 'feedback_text']:
     if key not in st.session_state:
         st.session_state[key] = False if 'finished' in key or 'show' in key else (0 if 'idx' in key or 'score' in key else None)
 
-# 3. データの読み込み
+# 3. データ読み込み
 if 'all_questions' not in st.session_state:
     try:
         df = pd.read_csv('questions.csv')
@@ -75,122 +49,95 @@ if 'all_questions' not in st.session_state:
 # 4. サイドバー
 st.sidebar.title("📚 Menu")
 if st.sidebar.button("リセット"):
-    st.session_state.clear()
-    st.rerun()
+    st.session_state.clear(); st.rerun()
 
-all_kous = sorted(list(set([str(q.get('kou', q.get('lecture', '1'))) for q in st.session_state.all_questions])))
+all_kous = sorted(list(set([str(q.get('kou', '1')) for q in st.session_state.all_questions])))
 selected_kous = st.sidebar.multiselect("講を選択", all_kous)
-order_type = st.sidebar.radio("出題順", ["順番通り", "ランダム"])
-
 if st.sidebar.button("学習スタート"):
     if selected_kous:
-        data = [q for q in st.session_state.all_questions if str(q.get('kou', q.get('lecture', '1'))) in selected_kous]
-        if order_type == "ランダム": random.shuffle(data)
+        data = [q for q in st.session_state.all_questions if str(q.get('kou', '1')) in selected_kous]
         st.session_state.current_list, st.session_state.current_idx, st.session_state.score = data, 0, 0
-        st.session_state.finished, st.session_state.show_feedback = False, False
-        st.rerun()
+        st.session_state.finished, st.session_state.show_feedback = False, False; st.rerun()
 
 if st.session_state.current_list is None:
-    st.info("👈 講を選んでスタートしてください。")
-    st.stop()
+    st.info("👈 講を選んでスタートしてください。"); st.stop()
 
 if st.session_state.finished:
-    st.balloons()
-    st.success(f"終了！ スコア: {st.session_state.score} / {len(st.session_state.current_list)}")
-    if st.button("最初に戻る"):
-        st.session_state.clear()
-        st.rerun()
+    st.balloons(); st.success(f"終了！ スコア: {st.session_state.score} / {len(st.session_state.current_list)}")
+    if st.button("最初に戻る"): st.session_state.clear(); st.rerun()
     st.stop()
 
 q = st.session_state.current_list[st.session_state.current_idx]
 ans_text = q.get('english', q.get('answer', ''))
 
-st.markdown(f"<div class='q-label'>第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='q-label'>第{st.session_state.current_idx + 1}問</div>", unsafe_allow_html=True)
 st.markdown(f"<div class='q-text'>{q.get('japanese', '')}</div>", unsafe_allow_html=True)
 
-# 6. ヒント
+# 5. ヒント
 with st.expander("💡 ヒント"):
     h_col1, h_col2 = st.columns(2)
     with h_col1:
         if st.button("文字で見る"): st.info(f"冒頭: {' '.join(ans_text.split()[:3])} ...")
     with h_col2:
         if st.button("音声を聞く"):
-            tts_h = gTTS(ans_text, lang='en')
-            af_h = io.BytesIO(); tts_h.write_to_fp(af_h)
+            tts_h = gTTS(ans_text, lang='en'); af_h = io.BytesIO(); tts_h.write_to_fp(af_h)
             st.audio(af_h, autoplay=False)
 
-# 7. タブ
+# 6. タブ
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
-img_for_ai = None
-input_type = "typed"
-
+img_for_ai = None; input_type = "typed"
 with tab1:
     raw = st.camera_input("撮影", key=f"c_{st.session_state.current_idx}")
-    if raw:
-        img_for_ai = st_cropper(Image.open(raw), realtime_update=True, box_color='#f39c12')
-        input_type = "image"
+    if raw: img_for_ai = st_cropper(Image.open(raw), realtime_update=True, box_color='#f39c12'); input_type = "image"
 with tab2:
     typed_ans = st.text_input("回答を入力", key=f"t_{st.session_state.current_idx}")
-    if typed_ans: input_type = "typed"
 with tab3:
     audio_data = st.audio_input("録音ボタンを押して解答", key=f"a_{st.session_state.current_idx}")
     if audio_data: input_type = "voice"
 
+# 指示：報告機能の実装（メールとシートに同時送信）
 with tab4:
+    st.subheader("先生への報告")
     with st.form("report"):
-        st.text_input("名前"); st.text_area("メッセージ")
-        if st.form_submit_button("送信"): st.success("送信しました。")
+        user_name = st.text_input("お名前")
+        report_msg = st.text_area("メッセージ")
+        if st.form_submit_button("送信"):
+            if user_name and report_msg:
+                with st.spinner("先生に送信中..."):
+                    try:
+                        gas_url = st.secrets["GAS_WEBAPP_URL"]
+                        payload = {"name": user_name, "message": report_msg, "question": q.get('japanese', '')}
+                        response = requests.post(gas_url, json=payload, timeout=10)
+                        if response.status_code == 200:
+                            st.success(f"{user_name}様、先生にメッセージを送信しました。")
+                        else: st.error("送信に失敗しました。")
+                    except: st.error("送信エラー。Secretsの設定を確認してください。")
+            else: st.warning("名前とメッセージを入力してください。")
 
-# 8. 操作ボタン
+# 7. 採点
 st.markdown("---")
 c1, c2 = st.columns(2)
 with c1:
     if st.button("🚀 採点する"):
-        # 指示：警告メッセージから「ストップ」を削除し、アイコンのみにする
-        if not (typed_ans or audio_data or img_for_ai):
-            st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
+        if not (typed_ans or audio_data or img_for_ai): st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
         else:
             with st.spinner("添削中..."):
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
                     available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    model_name = next((m for m in available if 'flash' in m), 'gemini-1.5-flash')
-                    model = genai.GenerativeModel(model_name)
-                    
-                    # 音声採点ルール（大文字・句読点不問）
-                    voice_rule = "【音声採点ルール】音声入力の場合は、大文字・小文字の区別、および句読点（. , ? ! など）の有無は不問とし、語順が合っていれば正解としてください。" if input_type == "voice" else ""
-
-                    prompt = f"""英語講師として添削。
-                    日本文：『{q.get('japanese','')}』
-                    模範解答：『{ans_text}』
-                    {voice_rule}
-
-                    【出力構成】
-                    1行目：評価の言葉
-                    2行目：あなたの解答：<b>[ここに生徒の解答をCentury体で表示]</b>
-                    (※2行目の後は必ず1行空けてください)
-                    3行目以降：解説
-
-                    【ルール】
-                    - 解説内の英文引用は必ず <b> </b> タグで囲むこと。
-                    - 解説の中の英語の和訳には必ず「 」をつけてください。
-                    - 「あなたの解答」の英語も他の英語と同じ書体（Century）にし、その後は1行空ける。
-                    - 「英文」という文字、記号 ** は絶対に出力しない。
-                    - 文法的に正しければ別解も正解とする。
-                    - 「不合格」は禁止。前向きに。英文に「」はつけない。
-                    - 正解なら必ず「正解です」を含める。"""
-
+                    model = genai.GenerativeModel(next((m for m in available if 'flash' in m), 'gemini-1.5-flash'))
+                    voice_rule = "音声入力時は大文字小文字・句読点を一切不問とせよ。" if input_type == "voice" else ""
+                    prompt = f"""英語講師として添削。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{voice_rule}
+                    【構成】1:評価、2:あなたの解答(Century)、(空行)、3:解説(和訳は「」付)。不合格禁止。"""
                     inp = [prompt]
                     if img_for_ai: inp.append(img_for_ai)
                     elif audio_data: inp.append({"mime_type": "audio/wav", "data": audio_data.read()})
                     else: inp.append(f"生徒の解答：{typed_ans}")
-
                     res = model.generate_content(inp)
                     f_text = res.text.replace("**", "")
                     st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
-                    if any(w in f_text for w in ["正解", "Perfect", "お見事"]):
-                        st.session_state.score += 1; st.balloons()
-                except Exception as e: st.error(f"接続エラー: {e}")
+                    if any(w in f_text for w in ["正解", "Perfect"]): st.session_state.score += 1; st.balloons()
+                except: st.error("接続エラー。")
 
 with c2:
     if st.button("次へ進む ➔"):
@@ -200,5 +147,4 @@ with c2:
 
 if st.session_state.show_feedback:
     st.markdown(f"<div class='feedback-container'>{st.session_state.feedback_text}<div class='model-answer-text'>模範解答：{ans_text}</div></div>", unsafe_allow_html=True)
-    tts_ans = gTTS(ans_text, lang='en'); af_ans = io.BytesIO(); tts_ans.write_to_fp(af_ans)
-    st.audio(af_ans, autoplay=False)
+    tts_ans = gTTS(ans_text, lang='en'); af_ans = io.BytesIO(); tts_ans.write_to_fp(af_ans); st.audio(af_ans, autoplay=False)
