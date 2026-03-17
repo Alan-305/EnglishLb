@@ -14,7 +14,7 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# CSS: フォントとレイアウトの微調整
+# CSS: フォント（明朝/Century）・サイズ・行間の詰めをすべて適用
 st.markdown("""
 <style>
     html, body, [class*="css"] {
@@ -30,6 +30,7 @@ st.markdown("""
     .q-label { margin-bottom: 2px; }
     .q-text { margin-top: 0px; margin-bottom: 15px; }
 
+    /* 解説エリア：行間を詰め、文字サイズを1.05emに統一 */
     .feedback-container { 
         background-color: #fff9f0; padding: 12px 18px; border-radius: 15px; 
         border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line;
@@ -37,7 +38,7 @@ st.markdown("""
     }
     .feedback-container * { margin-top: 0px !important; margin-bottom: 2px !important; }
     
-    /* 英文(bタグ)はCenturyを指定 */
+    /* 英文(bタグ)および解答部分はCentury */
     .feedback-container b, .feedback-container strong { 
         font-family: "Century", "Times New Roman", serif; font-size: 1.05em;
         color: #784212; background-color: #fff3e0; padding: 0 2px;
@@ -122,11 +123,20 @@ with st.expander("💡 ヒント"):
 # 7. タブ
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
 img_for_ai = None
+input_type = "typed" # デフォルト
+
 with tab1:
     raw = st.camera_input("撮影", key=f"c_{st.session_state.current_idx}")
-    if raw: img_for_ai = st_cropper(Image.open(raw), realtime_update=True, box_color='#f39c12')
-with tab2: typed_ans = st.text_input("回答を入力", key=f"t_{st.session_state.current_idx}")
-with tab3: audio_data = st.audio_input("録音ボタンを押して解答", key=f"a_{st.session_state.current_idx}")
+    if raw:
+        img_for_ai = st_cropper(Image.open(raw), realtime_update=True, box_color='#f39c12')
+        input_type = "image"
+with tab2:
+    typed_ans = st.text_input("回答を入力", key=f"t_{st.session_state.current_idx}")
+    if typed_ans: input_type = "typed"
+with tab3:
+    audio_data = st.audio_input("録音ボタンを押して解答", key=f"a_{st.session_state.current_idx}")
+    if audio_data: input_type = "voice"
+
 with tab4:
     with st.form("report"):
         st.text_input("名前"); st.text_area("メッセージ")
@@ -146,11 +156,15 @@ with c1:
                     model_name = next((m for m in available if 'flash' in m), 'gemini-1.5-flash')
                     model = genai.GenerativeModel(model_name)
                     
-                    # プロンプトの更新：Century適用と和訳・空行の指示
-                    prompt = f"""英語講師として厳格に添削してください。
+                    # 採点基準の柔軟化をプロンプトに反映
+                    voice_rule = "【音声採点ルール】音声入力の場合は、大文字・小文字の区別、および句読点（. , ? ! など）の有無は一切不問とし、語順が合っていれば正解としてください。" if input_type == "voice" else ""
+
+                    prompt = f"""経験豊富な英語講師として添削。
                     日本文：『{q.get('japanese','')}』
                     模範解答：『{ans_text}』
                     
+                    {voice_rule}
+
                     【出力構成】
                     1行目：評価の言葉
                     2行目：あなたの解答：<b>[ここに生徒の解答をCentury体で表示]</b>
@@ -159,23 +173,23 @@ with c1:
 
                     【ルール】
                     - 解説内の英文引用は必ず <b> </b> タグで囲むこと。
-                    - 解説の中で英文の「和訳」を出すときは、必ず「 」をつけてください。
+                    - 解説内の英文の「和訳」には必ず「 」をつける。
                     - 「英文」という文字、記号 ** は絶対に出力しない。
                     - 文法的に正しければ別解も正解とする。
-                    - 「不合格」は禁止。前向きに。英文に「」はつけない。
+                    - 「不合格」は禁止。前向きに。
                     - 正解なら必ず「正解です」を含める。"""
 
-                    input_data = [prompt]
-                    if img_for_ai: input_data.append(img_for_ai)
-                    elif audio_data: input_data.append({"mime_type": "audio/wav", "data": audio_data.read()})
-                    else: input_data.append(f"生徒の解答：{typed_ans}")
+                    inp = [prompt]
+                    if img_for_ai: inp.append(img_for_ai)
+                    elif audio_data: inp.append({"mime_type": "audio/wav", "data": audio_data.read()})
+                    else: inp.append(f"生徒の解答：{typed_ans}")
 
-                    res = model.generate_content(input_data)
-                    f_text = re.sub(r'[\*「」『』]', '', res.text, count=2) # 冒頭の記号のみ削除
-                    st.session_state.feedback_text, st.session_state.show_feedback = res.text.replace("**", ""), True
-                    if any(w in res.text for w in ["正解", "Perfect", "お見事"]):
+                    res = model.generate_content(inp)
+                    f_text = res.text.replace("**", "")
+                    st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
+                    if any(w in f_text for w in ["正解", "Perfect", "お見事"]):
                         st.session_state.score += 1; st.balloons()
-                except Exception as e: st.error(f"エラー: {e}")
+                except Exception as e: st.error(f"接続エラー: {e}")
 
 with c2:
     if st.button("次へ進む ➔"):
@@ -183,7 +197,6 @@ with c2:
         if st.session_state.current_idx >= len(st.session_state.current_list): st.session_state.finished = True
         st.session_state.show_feedback = False; st.rerun()
 
-# 9. 結果表示
 if st.session_state.show_feedback:
     st.markdown(f"<div class='feedback-container'>{st.session_state.feedback_text}<div class='model-answer-text'>模範解答：{ans_text}</div></div>", unsafe_allow_html=True)
     tts_ans = gTTS(ans_text, lang='en'); af_ans = io.BytesIO(); tts_ans.write_to_fp(af_ans)
