@@ -42,7 +42,7 @@ st.markdown("""
 
 st.markdown("<h1 class='main-title'>基礎シリーズ_英語②_T_重要文例</h1>", unsafe_allow_html=True)
 
-# --- 2. 変数の初期化 ---
+# --- 2. セッション変数の初期化 ---
 for key in ['finished', 'score', 'current_idx', 'show_feedback', 'current_list', 'feedback_text']:
     if key not in st.session_state:
         st.session_state[key] = False if 'finished' in key or 'show' in key else (0 if 'idx' in key or 'score' in key else None)
@@ -95,7 +95,7 @@ ans_text = q.get('english', q.get('answer', ''))
 st.write(f"### 第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}")
 st.write(f"## {q.get('japanese', '')}")
 
-# --- 6. ヒント機能（自動再生なし） ---
+# --- 6. ヒント機能 ---
 with st.expander("💡 ヒント（文字または音声）"):
     h_col1, h_col2 = st.columns(2)
     with h_col1:
@@ -107,7 +107,7 @@ with st.expander("💡 ヒント（文字または音声）"):
             tts_h = gTTS(ans_text, lang='en')
             af_h = io.BytesIO()
             tts_h.write_to_fp(af_h)
-            st.audio(af_h, autoplay=False) # 指示3: 音声競合防止
+            st.audio(af_h, autoplay=False) # 自動再生させない
 
 # --- 7. タブ機能 ---
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
@@ -131,7 +131,7 @@ with tab4:
         st.text_area("メッセージ")
         if st.form_submit_button("送信"): st.success("報告を受け付けました！")
 
-# --- 8. 操作ボタン（採点 & 次へ） ---
+# --- 8. 操作ボタン ---
 st.markdown("---")
 col1, col2 = st.columns(2)
 
@@ -140,18 +140,16 @@ with col1:
         if not (typed_ans or audio_data or img_for_ai):
             st.warning("⚠️ 解答を入力してください。")
         else:
-            with st.spinner("添削中..."): # 「添削中」の表示
+            with st.spinner("添削中..."):
                 try:
                     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    # 404対策：models/ を付けない名前を優先、ダメなら自動検知
-                    try:
-                        model = genai.GenerativeModel('gemini-1.5-flash')
-                    except:
-                        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                        target = next((m for m in available_models if 'flash' in m), available_models[0])
-                        model = genai.GenerativeModel(target)
                     
-                    prompt = f"""経験豊富な英語講師として添削してください。
+                    # 【404対策】現在使えるモデルを自動検知して繋ぐ
+                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    target_model = next((m for m in models if 'flash' in m), models[0])
+                    model = genai.GenerativeModel(target_model)
+                    
+                    prompt = f"""英語講師として添削してください。
                     日本文：『{q.get('japanese','')}』
                     模範解答：『{ans_text}』
                     
@@ -161,17 +159,18 @@ with col1:
                     3行目以降：解説
 
                     【ルール】
-                    - 解説の中の英文引用は <b> </b> タグで囲むこと。
+                    - 解説の中の英文引用は必ず <b> </b> タグで囲むこと。
                     - 「英文」という文字は出力しない。
                     - 英文に「」や『』はつけない。
                     - 文法的に正しければ別解も正解(Perfect!)とする。
                     - 「不合格」という言葉、記号 ** は絶対に使用禁止。
                     - 正解なら「正解です」を含める。"""
 
+                    user_ans_label = typed_ans if typed_ans else "（音声または画像での解答）"
                     content = [prompt]
                     if img_for_ai: content.append(img_for_ai)
                     elif audio_data: content.append({"mime_type": "audio/wav", "data": audio_data.read()})
-                    else: content.append(f"生徒の解答：{typed_ans}")
+                    else: content.append(f"生徒の解答：{user_ans_label}")
 
                     response = model.generate_content(content)
                     f_text = response.text.replace("**", "").replace("「英文」", "").replace("英文：", "")
@@ -184,7 +183,6 @@ with col1:
                     st.error(f"接続エラー: {e}")
 
 with col2:
-    # 指示2: 解答前でも常に機能するNextボタン
     if st.button("次へ進む ➔"):
         st.session_state.current_idx += 1
         if st.session_state.current_idx >= len(st.session_state.current_list):
@@ -195,8 +193,7 @@ with col2:
 # --- 9. 添削結果表示 ---
 if st.session_state.show_feedback:
     st.markdown(f"<div class='feedback-container'>{st.session_state.feedback_text}<div class='model-answer-text'>模範解答：{ans_text}</div></div>", unsafe_allow_html=True)
-    # 指示1: autoplay=False で勝手に読み上げない
     tts = gTTS(ans_text, lang='en')
     af = io.BytesIO()
     tts.write_to_fp(af)
-    st.audio(af, autoplay=False)
+    st.audio(af, autoplay=False) # 勝手に読み上げない
