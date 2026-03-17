@@ -15,26 +15,17 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# --- CSS: サイドバー矢印を復活させつつ、余計なものを消し、ライトモードを固定 ---
+# --- CSS: ライトモード強制・ブランディング非表示・フォント指定 ---
 st.markdown("""
 <style>
-    /* 1. ヘッダー全体ではなく、ツールバー（GitHub/Menu）のみを消す */
+    /* 1. ツールバー、メニュー、フッターを完全に隠す */
     [data-testid="stToolbar"] {visibility: hidden !important;}
     footer {visibility: hidden !important;}
-    .viewerBadge_container__1QSob {display: none !important;}
+    header {visibility: hidden !important;}
+    [data-testid="stSidebar"] {display: none !important;} /* サイドバー自体を無効化 */
 
     /* 2. ライトモード強制固定 */
-    /* 背景と文字色を白と黒に固定 */
-    .stApp {
-        background: #ffffff !important;
-        color: #000000 !important;
-    }
-    
-    /* サイドバーもライトモード固定 */
-    [data-testid="stSidebar"] {
-        background-color: #f8f9fa !important;
-        color: #000000 !important;
-    }
+    .stApp { background: #ffffff !important; color: #000000 !important; }
     
     /* 3. フォント指定（日本語：明朝、英語：Century） */
     html, body, [class*="css"], .stMarkdown {
@@ -42,17 +33,15 @@ st.markdown("""
         color: #000000 !important;
     }
 
-    /* 入力エリアの背景色も白に固定 */
-    input, textarea, [data-baseweb="input"], [data-baseweb="base-input"] {
-        background-color: #ffffff !important;
-        color: #000000 !important;
-    }
-    
-    /* 4. タイトルと問題文 */
+    /* 4. タイトルとデザイン */
     .main-title { 
         color: #e67e22 !important; text-align: center; font-weight: 700; 
-        font-size: 1.2em; padding: 8px 0; border-bottom: 3px solid #ffcc80; 
-        margin-bottom: 12px; 
+        font-size: 1.2em; padding: 10px 0; border-bottom: 3px solid #ffcc80; 
+        margin-bottom: 20px; 
+    }
+    .setup-box {
+        background-color: #fffaf0; padding: 20px; border-radius: 15px;
+        border: 2px solid #ffcc80; margin-bottom: 20px;
     }
     .q-label { color: #784212 !important; font-weight: bold; font-size: 1.2em; }
     .q-text { color: #000000 !important; font-weight: bold; font-size: 1.2em; margin-bottom: 15px; }
@@ -63,11 +52,8 @@ st.markdown("""
         border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line; 
         line-height: 1.3 !important; font-size: 1.05em; color: #4e342e !important; 
     }
-    
-    /* 英文(bタグ)および「あなたの解答」はCentury */
     .feedback-container b, .feedback-container strong { 
-        font-family: "Century", "Times New Roman", serif !important; 
-        font-size: 1.05em; color: #784212 !important; 
+        font-family: "Century", serif !important; color: #784212 !important; 
         background-color: #fff3e0 !important; padding: 0 2px; 
     }
     .model-answer-text { 
@@ -83,7 +69,7 @@ st.markdown("""
         font-weight: bold !important; width: 100%; 
     }
 
-    /* 7. チャット吹き出し */
+    /* 7. チャット */
     .chat-bubble { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; line-height: 1.4; font-size: 1.05em; }
     .user-bubble { background-color: #ffe0b2 !important; color: #784212 !important; border: 1px solid #ffcc80; }
     .ai-bubble { background-color: #ffffff !important; border: 1px solid #ffcc80; color: #4e342e !important; }
@@ -114,32 +100,54 @@ if 'all_questions' not in st.session_state:
         st.session_state.all_questions = df.to_dict('records')
     except: st.error("questions.csvが見つかりません。"); st.stop()
 
-# 4. サイドバー
-st.sidebar.title("📚 Menu")
-if st.sidebar.button("リセット"): st.session_state.clear(); st.rerun()
-all_kous = sorted(list(set([str(q.get('kou', '1')) for q in st.session_state.all_questions])))
-selected_kous = st.sidebar.multiselect("講を選択", all_kous)
-order_type = st.sidebar.radio("出題順", ["順番通り", "ランダム"])
+# --- 💡 修正ポイント：セットアップ画面（メインページ上部） ---
+if st.session_state.current_list is None:
+    st.markdown("<div class='setup-box'>", unsafe_allow_html=True)
+    st.subheader("📚 学習設定")
+    all_kous = sorted(list(set([str(q.get('kou', '1')) for q in st.session_state.all_questions])))
+    selected_kous = st.multiselect("学習する講を選択してください", all_kous)
+    order_type = st.radio("出題順を選択してください", ["順番通り", "ランダム"], horizontal=True)
+    
+    if st.button("🚀 学習スタート"):
+        if selected_kous:
+            data = [q for q in st.session_state.all_questions if str(q.get('kou', '1')) in selected_kous]
+            if order_type == "ランダム": random.shuffle(data)
+            st.session_state.current_list, st.session_state.current_idx, st.session_state.score = data, 0, 0
+            st.session_state.finished, st.session_state.show_feedback, st.session_state.chat_history = False, False, []
+            st.rerun()
+        else:
+            st.warning("講を1つ以上選択してください。")
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
 
-if st.sidebar.button("学習スタート"):
-    if selected_kous:
-        data = [q for q in st.session_state.all_questions if str(q.get('kou', '1')) in selected_kous]
-        if order_type == "ランダム": random.shuffle(data)
-        st.session_state.current_list, st.session_state.current_idx, st.session_state.score = data, 0, 0
-        st.session_state.finished, st.session_state.show_feedback, st.session_state.chat_history = False, False, []; st.rerun()
-
-if st.session_state.current_list is None: st.info("👈 講を選んでスタートしてください。"); st.stop()
-
+# --- 4. 学習中の画面 ---
 if st.session_state.finished:
     st.balloons(); st.success(f"終了！ スコア: {st.session_state.score} / {len(st.session_state.current_list)}")
-    if st.button("最初に戻る"): st.session_state.clear(); st.rerun()
+    if st.button("設定画面に戻る"):
+        st.session_state.current_list = None
+        st.rerun()
     st.stop()
 
 q = st.session_state.current_list[st.session_state.current_idx]
 ans_text = q.get('english', q.get('answer', ''))
 
-st.markdown(f"<div class='q-label'>第{st.session_state.current_idx + 1}問</div>", unsafe_allow_html=True)
+col_header_1, col_header_2 = st.columns([3, 1])
+with col_header_1:
+    st.markdown(f"<div class='q-label'>第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}</div>", unsafe_allow_html=True)
+with col_header_2:
+    if st.button("最初からやり直す", key="reset_btn"):
+        st.session_state.current_list = None; st.rerun()
+
 st.markdown(f"<div class='q-text'>{q.get('japanese', '')}</div>", unsafe_allow_html=True)
+
+# 5. ヒント
+with st.expander("💡 ヒント"):
+    h_c1, h_c2 = st.columns(2)
+    with h_c1:
+        if st.button("文字で見る"): st.info(f"冒頭: {' '.join(ans_text.split()[:3])} ...")
+    with h_c2:
+        if st.button("音声を聞く"):
+            tts_h = gTTS(ans_text, lang='en'); af_h = io.BytesIO(); tts_h.write_to_fp(af_h); st.audio(af_h)
 
 # 6. タブ
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告", "❓ 質問コーナー"])
@@ -166,14 +174,12 @@ with tab4:
 with tab5:
     st.subheader("🤖 AI講師に質問")
     for chat in st.session_state.chat_history:
-        role_label = "👤 生徒" if chat["role"] == "user" else "🤖 先生"
-        role_class = "user-bubble" if chat["role"] == "user" else "ai-bubble"
-        st.markdown(f"<div class='chat-bubble {role_class}'><b>{role_label}:</b><br>{chat['content']}</div>", unsafe_allow_html=True)
-
-    with st.form("chat_input_form", clear_on_submit=True):
+        r_label = "👤 生徒" if chat["role"] == "user" else "🤖 先生"
+        r_class = "user-bubble" if chat["role"] == "user" else "ai-bubble"
+        st.markdown(f"<div class='chat-bubble {r_class}'><b>{r_label}:</b><br>{chat['content']}</div>", unsafe_allow_html=True)
+    with st.form("chat_form", clear_on_submit=True):
         user_msg = st.text_area("質問内容（リターンキーで改行できます）", height=100)
-        submitted = st.form_submit_button("⬆️ 質問を送信する")
-        if submitted and user_msg:
+        if st.form_submit_button("⬆️ 質問を送信する") and user_msg:
             st.session_state.chat_history.append({"role": "user", "content": user_msg}); st.rerun()
 
 if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
@@ -185,7 +191,7 @@ if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] =
             st.session_state.chat_history.append({"role": "ai", "content": resp.text.replace("**", "")}); st.rerun()
         except Exception as e: st.error(f"質問回答エラー: {str(e)}")
 
-# 8. 採点ボタン
+# 7. 採点
 st.markdown("---")
 if st.button("🚀 採点する"):
     if not (typed_ans or audio_data or img_for_ai): st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
@@ -194,12 +200,12 @@ if st.button("🚀 採点する"):
             try:
                 model = genai.GenerativeModel(get_best_model())
                 v_rule = "音声入力時は大文字小文字・句読点を一切不問とし、語順が合っていれば正解とせよ。" if input_type == "voice" else ""
-                prompt = f"""英語講師として添削。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{v_rule}
-                【構成】1:評価、2:あなたの解答：<b>[生徒の解答をCentury体で表示]</b>、(空行)、3:解説(和訳は「 」付)。不合格禁止。回答に**は入れない。"""
+                prompt = f"""英語講師。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{v_rule}
+                【構成】1:評価、2:あなたの解答：<b>[生徒の解答をCentury]</b>、(空行)、3:解説(和訳「 」付)。不合格禁止。**禁止。"""
                 inp = [prompt]
                 if img_for_ai: inp.append(img_for_ai)
                 elif audio_data: inp.append({"mime_type": "audio/wav", "data": audio_data.read()})
-                else: inp.append(f"生徒の解答：{typed_ans}")
+                else: inp.append(f"解答：{typed_ans}")
                 res = model.generate_content(inp)
                 f_text = res.text.replace("**", "")
                 st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
@@ -213,4 +219,4 @@ if st.button("次へ進む ➔"):
 
 if st.session_state.show_feedback:
     st.markdown(f"<div class='feedback-container'>{st.session_state.feedback_text}<div class='model-answer-text'>模範解答：{ans_text}</div></div>", unsafe_allow_html=True)
-    tts_ans = gTTS(ans_text, lang='en'); af_ans = io.BytesIO(); tts_ans.write_to_fp(af_ans); st.audio(af_ans, autoplay=False)
+    tts_ans = gTTS(ans_text, lang='en'); af_ans = io.BytesIO(); tts_ans.write_to_fp(af_ans); st.audio(af_ans)
