@@ -15,33 +15,25 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# CSS: 先生こだわりのデザイン
+# APIキーの設定（最初に行う）
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+
+# CSS: 先生こだわりのデザインを徹底
 st.markdown("""
 <style>
     html, body, [class*="css"] { font-family: "MS PMincho", "Hiragino Mincho ProN", serif; }
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff3e0 100%); }
     .main-title { color: #e67e22; text-align: center; font-weight: 700; font-size: 1.2em; padding: 8px 0; border-bottom: 3px solid #ffcc80; margin-bottom: 12px; }
     .q-label, .q-text { font-size: 1.2em; color: #784212; font-weight: bold; }
-    
-    .feedback-container { 
-        background-color: #fff9f0; padding: 12px 18px; border-radius: 15px; 
-        border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line; 
-        line-height: 1.25 !important; font-size: 1.05em; color: #4e342e; 
-    }
-    .feedback-container * { margin-top: 0px !important; margin-bottom: 2px !important; }
-    
-    .feedback-container b, .feedback-container strong { 
-        font-family: "Century", serif; font-size: 1.05em; 
-        color: #784212; background-color: #fff3e0; padding: 0 2px; 
-    }
-    .model-answer-text { 
-        font-family: "Century", serif; font-size: 1.05em; font-weight: bold; 
-        margin-top: 8px !important; color: #784212; border-top: 1px dashed #ffcc80; padding-top: 5px; 
-    }
+    .feedback-container { background-color: #fff9f0; padding: 12px 18px; border-radius: 15px; border-left: 8px solid #f39c12; margin-top: 10px; white-space: pre-line; line-height: 1.25 !important; font-size: 1.05em; color: #4e342e; }
+    .feedback-container b, .feedback-container strong { font-family: "Century", serif; font-size: 1.05em; color: #784212; background-color: #fff3e0; padding: 0 2px; }
+    .model-answer-text { font-family: "Century", serif; font-size: 1.05em; font-weight: bold; margin-top: 8px !important; color: #784212; border-top: 1px dashed #ffcc80; padding-top: 5px; }
     div.stButton > button { background-color: #f39c12 !important; color: white !important; border-radius: 15px !important; height: 3.5em !important; font-weight: bold !important; width: 100%; }
     
+    /* チャット吹き出し */
     .chat-bubble { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; line-height: 1.4; font-size: 1.05em; }
-    .user-bubble { background-color: #ffe0b2; color: #784212; }
+    .user-bubble { background-color: #ffe0b2; color: #784212; border: 1px solid #ffcc80; }
     .ai-bubble { background-color: #ffffff; border: 1px solid #ffcc80; color: #4e342e; }
 </style>
 """, unsafe_allow_html=True)
@@ -113,45 +105,55 @@ with tab4:
                     if res.status_code == 200: st.success("先生に送信しました。")
                 except: st.error("送信に失敗しました。")
 
-# --- 💡 修正ポイント：質問コーナー（リターンキー送信無効版） ---
+# --- 💡 修正ポイント：質問コーナー（誤送信防止＆安定化） ---
 with tab5:
     st.subheader("🤖 AI講師に質問")
+    # 履歴を表示
     for chat in st.session_state.chat_history:
+        role_label = "👤 生徒" if chat["role"] == "user" else "🤖 先生"
         role_class = "user-bubble" if chat["role"] == "user" else "ai-bubble"
-        st.markdown(f"<div class='chat-bubble {role_class}'>{chat['content']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='chat-bubble {role_class}'><b>{role_label}:</b><br>{chat['content']}</div>", unsafe_allow_html=True)
 
-    # st.chat_inputの代わりにtext_areaを使用
-    user_input_text = st.text_area("質問内容（リターンキーで改行できます）", key="chat_area", height=100)
-    
-    # 送信ボタン（⬆️）を明示的に配置
-    if st.button("⬆️ 質問を送信する"):
-        if user_input_text:
-            st.session_state.chat_history.append({"role": "user", "content": user_input_text})
-            with st.spinner("先生が考えています..."):
-                try:
-                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    model = genai.GenerativeModel(next((m for m in available if 'flash' in m), 'gemini-1.5-flash'))
-                    chat_instruction = f"""英語講師です。現在生徒は『{q.get('japanese','')}』(模範解答：{ans_text})を解いています。
-                    【ルール】日本語は明朝体、英語はCentury。記号**は禁止。和訳は「」付。"""
-                    response = model.generate_content([chat_instruction, user_input_text])
-                    clean_reply = response.text.replace("**", "")
-                    st.session_state.chat_history.append({"role": "ai", "content": clean_reply})
-                    st.rerun()
-                except: st.error("エラーが発生しました。")
+    # フォームを使用してリターンキー送信を回避
+    with st.form("chat_input_form", clear_on_submit=True):
+        user_msg = st.text_area("質問内容（リターンキーで改行できます）", height=100, placeholder="例：この英文の文法を教えてください。")
+        submitted = st.form_submit_button("⬆️ 質問を送信する")
+        
+        if submitted and user_msg:
+            st.session_state.chat_history.append({"role": "user", "content": user_msg})
+            # ユーザーの質問を追加したら即リランして表示を更新し、AIの回答処理へ
+            st.rerun()
 
-# 8. 採点
+# AIの回答処理（履歴の最後がユーザーの場合に発動）
+if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
+    with st.spinner("先生が回答を作成中..."):
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            chat_prompt = f"""親切な英語講師として回答してください。
+            現在、生徒は『{q.get('japanese','')}』(模範解答：{ans_text})という問題を解いています。
+            【ルール】
+            - 日本語は明朝体風、英語は Century 体。引用は <b> </b> で囲む。
+            - 記号 ** は絶対に使わない。
+            - 和訳を出すときは必ず「 」をつける。
+            - 回答は1行あけて整理する。"""
+            
+            response = model.generate_content([chat_prompt, st.session_state.chat_history[-1]["content"]])
+            ai_reply = response.text.replace("**", "")
+            st.session_state.chat_history.append({"role": "ai", "content": ai_reply})
+            st.rerun()
+        except Exception as e:
+            st.error(f"申し訳ありません。回答中にエラーが発生しました。時間を置いて再度お試しください。")
+
+# --- 8. 採点ボタン ---
 st.markdown("---")
 if st.button("🚀 採点する"):
     if not (typed_ans or audio_data or img_for_ai): st.warning("⚠️ 録音中の場合は **⏹️** を押してから採点に進んでください。")
     else:
         with st.spinner("添削中..."):
             try:
-                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                model = genai.GenerativeModel(next((m for m in available if 'flash' in m), 'gemini-1.5-flash'))
-                voice_rule = "音声入力時は大文字小文字・句読点を一切不問とし、語順が合っていれば正解とせよ。" if input_type == "voice" else ""
-                prompt = f"""英語講師として添削。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{voice_rule}
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                v_rule = "音声入力時は大文字小文字・句読点を一切不問とし、語順が合っていれば正解とせよ。" if input_type == "voice" else ""
+                prompt = f"""英語講師として添削。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。{v_rule}
                 【構成】1:評価、2:あなたの解答：<b>[生徒の解答をCentury体で表示]</b>、(空行)、3:解説(和訳は「 」付)。不合格禁止。回答に**は入れない。"""
                 inp = [prompt]
                 if img_for_ai: inp.append(img_for_ai)
@@ -161,7 +163,7 @@ if st.button("🚀 採点する"):
                 f_text = res.text.replace("**", "")
                 st.session_state.feedback_text, st.session_state.show_feedback = f_text, True
                 if any(w in f_text for w in ["正解", "Perfect"]): st.session_state.score += 1; st.balloons()
-            except: st.error("エラーが発生しました。")
+            except: st.error("採点中にエラーが発生しました。")
 
 if st.button("次へ進む ➔"):
     st.session_state.current_idx += 1
