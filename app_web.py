@@ -26,6 +26,13 @@ st.markdown("""
         width: 100%;
     }
     .feedback-container { background-color: #fff9f0; padding: 20px; border-radius: 15px; border-left: 8px solid #f39c12; margin-top: 15px; }
+    
+    /* 英文表示のサイズ統一：解説中の太字(b)と模範解答を1.4emに */
+    .feedback-container b, .feedback-container strong { 
+        font-family: 'serif'; font-size: 1.4em; color: #784212; 
+        background-color: #fff3e0; padding: 0 4px; font-weight: bold;
+    }
+    .model-answer-text { font-family: 'serif'; font-size: 1.4em; font-weight: bold; margin-top: 15px; color: #784212; border-top: 1px dashed #ffcc80; padding-top: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -46,7 +53,7 @@ if 'all_questions' not in st.session_state:
         st.error("questions.csvが読み込めません。")
         st.stop()
 
-# --- 4. サイドバー（設定・ランダム） ---
+# --- 4. サイドバー ---
 st.sidebar.title("📚 Menu")
 if st.sidebar.button("最初からリセット"):
     st.session_state.clear()
@@ -71,7 +78,7 @@ if st.session_state.current_list is None:
     st.stop()
 
 if st.session_state.finished:
-    st.balloons() # 全問終了時のお祝い
+    st.balloons()
     st.success(f"全問終了！ 今回のスコア: {st.session_state.score} / {len(st.session_state.current_list)}")
     if st.button("最初に戻る"):
         st.session_state.clear()
@@ -98,7 +105,7 @@ with st.expander("💡 ヒント（文字または音声）"):
             tts_h.write_to_fp(af_h)
             st.audio(af_h, autoplay=True)
 
-# --- 7. タブ機能（4タブ） ---
+# --- 7. タブ機能 ---
 tab1, tab2, tab3, tab4 = st.tabs(["📷 写真", "⌨️ 打ち込み", "🎤 音声", "💬 報告"])
 
 img_for_ai = None
@@ -122,55 +129,54 @@ with tab4:
 
 # --- 8. 採点ロジック ---
 st.markdown("---")
-col1, col2 = st.columns(2)
+if st.button("🚀 採点する"):
+    if not (typed_ans or audio_data or img_for_ai):
+        st.warning("⚠️ 解答を入力してください。")
+    else:
+        # 指示2：添削中の表示を出す
+        with st.spinner("添削中..."):
+            try:
+                genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                target_model = next((m for m in available_models if 'flash' in m), available_models[0])
+                model = genai.GenerativeModel(target_model)
+                
+                prompt = f"""英語講師として添削して。
+                日本文：『{q.get('japanese','')}』
+                模範解答：『{ans_text}』
+                
+                【ルール】
+                - 解説中の英文引用は <b>英文</b> とタグで囲むこと。
+                - 文法的に正しければ別解も正解(Perfect!)とする。
+                - 不合格という言葉、記号 **、英文への「」は禁止。
+                - 前向きに励ますこと。正解なら必ず「正解です」を含めること。"""
 
-with col1:
-    if st.button("🚀 採点する"):
-        if not (typed_ans or audio_data or img_for_ai):
-            st.warning("⚠️ 解答を入力してください。")
-        else:
-            with st.spinner("AI先生が確認中..."):
-                try:
-                    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-                    
-                    # 404対策：利用可能なモデルを自動選択
-                    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    target_model = next((m for m in available_models if 'flash' in m), available_models[0])
-                    model = genai.GenerativeModel(target_model)
-                    
-                    prompt = f"英語講師として添削して。日本文『{q.get('japanese','')}』、模範解答『{ans_text}』。別解も正解(Perfect!)として。不合格という言葉、記号、カギカッコは禁止。励まして。正解なら必ず「正解です」という言葉を含めて。"
+                if img_for_ai:
+                    response = model.generate_content([prompt, img_for_ai])
+                elif audio_data:
+                    response = model.generate_content([prompt, {"mime_type": "audio/wav", "data": audio_data.read()}])
+                else:
+                    response = model.generate_content(f"{prompt}\n生徒解答：{typed_ans}")
+                
+                clean_text = re.sub(r'[\*「」『』]', '', response.text)
+                st.session_state.feedback_text, st.session_state.show_feedback = clean_text, True
+                
+                if any(word in clean_text for word in ["正解", "Perfect", "お見事", "素晴らしい"]):
+                    st.session_state.score += 1
+                    st.balloons()
+            except Exception as e:
+                st.error(f"接続エラー: {e}")
 
-                    if img_for_ai:
-                        response = model.generate_content([prompt, img_for_ai])
-                    elif audio_data:
-                        response = model.generate_content([prompt, {"mime_type": "audio/wav", "data": audio_data.read()}])
-                    else:
-                        response = model.generate_content(f"{prompt}\n生徒解答：{typed_ans}")
-                    
-                    clean_text = re.sub(r'[\*「」『』]', '', response.text)
-                    st.session_state.feedback_text, st.session_state.show_feedback = clean_text, True
-                    
-                    # 【重要：バルーンの判定強化】
-                    # 正解、Perfect、お見事、素晴らしい、などの言葉に反応するように
-                    praise_words = ["正解", "Perfect", "お見事", "素晴らしい", "Excellent", "Good job"]
-                    if any(word in clean_text for word in praise_words):
-                        st.session_state.score += 1
-                        st.balloons() # ここでバルーンを飛ばす！
-                        
-                except Exception as e:
-                    st.error(f"接続エラー: {e}")
-
-with col2:
+if st.session_state.show_feedback:
+    st.markdown(f"<div class='feedback-container'>{st.session_state.feedback_text}<div class='model-answer-text'>模範解答：{ans_text}</div></div>", unsafe_allow_html=True)
+    tts = gTTS(ans_text, lang='en')
+    af = io.BytesIO()
+    tts.write_to_fp(af)
+    st.audio(af, autoplay=True)
+    
     if st.button("次へ進む ➔"):
         st.session_state.current_idx += 1
         if st.session_state.current_idx >= len(st.session_state.current_list):
             st.session_state.finished = True
         st.session_state.show_feedback = False
         st.rerun()
-
-if st.session_state.show_feedback:
-    st.markdown(f"<div class='feedback-container'>{st.session_state.feedback_text}<br><br><b>模範解答：{ans_text}</b></div>", unsafe_allow_html=True)
-    tts = gTTS(ans_text, lang='en')
-    af = io.BytesIO()
-    tts.write_to_fp(af)
-    st.audio(af, autoplay=True)
