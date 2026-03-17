@@ -14,7 +14,7 @@ import re
 # 1. ページ設定
 st.set_page_config(page_title="基礎シリーズ_英語②_T_重要文例", layout="centered")
 
-# CSS: フォントの使い分けと文字サイズの統一
+# CSS: タイトルサイズを1.5emから1.2emへ縮小
 st.markdown("""
 <style>
     /* 全体のフォント設定：日本語は明朝体、英語はCentury系 */
@@ -23,13 +23,15 @@ st.markdown("""
     }
     
     .stApp { background: linear-gradient(135deg, #ffffff 0%, #fff3e0 100%); }
+    
+    /* 指示：タイトルの文字サイズを少し小さく(1.2em) */
     .main-title { 
         color: #e67e22; text-align: center; font-weight: 700; 
-        font-size: 1.5em; padding: 10px 0; border-bottom: 3px solid #ffcc80; 
-        font-family: 'serif'; margin-bottom: 15px;
+        font-size: 1.2em; padding: 8px 0; border-bottom: 3px solid #ffcc80; 
+        font-family: 'serif'; margin-bottom: 12px;
     }
     
-    /* 第〇問ラベルと問題文のサイズを統一 */
+    /* ラベルと問題文のサイズ統一 */
     .q-label {
         font-size: 1.2em;
         color: #784212;
@@ -37,14 +39,14 @@ st.markdown("""
         margin-bottom: 2px;
     }
     .q-text {
-        font-size: 1.2em; /* ラベルと同じサイズに統一 */
+        font-size: 1.2em;
         color: #784212;
         font-weight: bold;
         margin-top: 0px;
         margin-bottom: 15px;
     }
 
-    /* 解説エリア */
+    /* 解説エリア：行間と余白を詰める */
     .feedback-container { 
         background-color: #fff9f0; 
         padding: 12px 18px; 
@@ -71,7 +73,7 @@ st.markdown("""
         padding: 0 2px;
     }
     
-    /* 模範解答（最下部） */
+    /* 模範解答 */
     .model-answer-text { 
         font-family: "Century", "Times New Roman", serif;
         font-size: 1.05em;
@@ -127,7 +129,7 @@ if st.sidebar.button("学習スタート"):
         st.session_state.finished, st.session_state.show_feedback = False, False
         st.rerun()
 
-# 5. メイン画面制御
+# 5. メイン制御
 if st.session_state.current_list is None:
     st.info("👈 左のメニューから講を選んでスタートしてください。")
     st.stop()
@@ -143,11 +145,11 @@ if st.session_state.finished:
 q = st.session_state.current_list[st.session_state.current_idx]
 ans_text = q.get('english', q.get('answer', ''))
 
-# 表示：ラベルと問題文のサイズを統一
+# 表示
 st.markdown(f"<div class='q-label'>第{st.session_state.current_idx + 1}問 / {len(st.session_state.current_list)}</div>", unsafe_allow_html=True)
 st.markdown(f"<div class='q-text'>{q.get('japanese', '')}</div>", unsafe_allow_html=True)
 
-# 6. ヒント機能
+# 6. ヒント
 with st.expander("💡 ヒント（文字または音声）"):
     h_col1, h_col2 = st.columns(2)
     with h_col1:
